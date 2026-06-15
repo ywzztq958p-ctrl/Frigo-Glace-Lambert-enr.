@@ -15,26 +15,28 @@ import {
   FileText 
 } from 'lucide-react';
 import { ProductionEntry, CalendarEvent, QuickNote } from '../types';
-import { POCKET_PRICE, BAG_PRICE, formatCurrency } from '../utils';
+import { formatCurrency } from '../utils';
 
 interface DashboardProps {
   production: ProductionEntry[];
   events: CalendarEvent[];
   notes: QuickNote[];
   onNavigate: (tab: string) => void;
+  pocketPrice: number;
+  bagPrice: number;
 }
 
-export default function Dashboard({ production, events, notes, onNavigate }: DashboardProps) {
+export default function Dashboard({ production, events, notes, onNavigate, pocketPrice, bagPrice }: DashboardProps) {
   // Calculations
   const unpaidEntries = production.filter(p => p.status === 'Non payé');
   const paidEntries = production.filter(p => p.status === 'Payé');
 
   const totalUnpaid = unpaidEntries.reduce((acc, curr) => {
-    return acc + (curr.pockets12kg * POCKET_PRICE) + (curr.bags27kg * BAG_PRICE);
+    return acc + (curr.pockets12kg * pocketPrice) + (curr.bags27kg * bagPrice);
   }, 0);
 
   const totalPaid = paidEntries.reduce((acc, curr) => {
-    return acc + (curr.pockets12kg * POCKET_PRICE) + (curr.bags27kg * BAG_PRICE);
+    return acc + (curr.pockets12kg * pocketPrice) + (curr.bags27kg * bagPrice);
   }, 0);
 
   const grandTotal = totalUnpaid + totalPaid;
@@ -56,7 +58,7 @@ export default function Dashboard({ production, events, notes, onNavigate }: Das
 
     const pockets = thisWeekEntries.reduce((sum, entry) => sum + entry.pockets12kg, 0);
     const bags = thisWeekEntries.reduce((sum, entry) => sum + entry.bags27kg, 0);
-    const money = thisWeekEntries.reduce((sum, entry) => sum + (entry.pockets12kg * POCKET_PRICE + entry.bags27kg * BAG_PRICE), 0);
+    const money = thisWeekEntries.reduce((sum, entry) => sum + (entry.pockets12kg * pocketPrice + entry.bags27kg * bagPrice), 0);
 
     return { pockets, bags, money };
   };
@@ -185,12 +187,12 @@ export default function Dashboard({ production, events, notes, onNavigate }: Das
           <div className="bg-white p-4 rounded-lg shadow-2xs border border-blue-100">
             <p className="text-xs text-slate-500 font-medium">Poches (12 kg)</p>
             <p className="text-lg sm:text-2xl font-extrabold text-blue-900">{weekStats.pockets}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{(weekStats.pockets * POCKET_PRICE).toFixed(2)}$ acquis</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{(weekStats.pockets * pocketPrice).toFixed(2)}$ acquis</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-2xs border border-blue-100">
             <p className="text-xs text-slate-500 font-medium">Sacs (2,7 kg)</p>
             <p className="text-lg sm:text-2xl font-extrabold text-blue-900">{weekStats.bags}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{(weekStats.bags * BAG_PRICE).toFixed(2)}$ acquis</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{(weekStats.bags * bagPrice).toFixed(2)}$ acquis</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-2xs border border-blue-100">
             <p className="text-xs text-slate-500 font-medium">Salaire Estimé</p>

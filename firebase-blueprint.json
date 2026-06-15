@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "ProductionEntry": {
+      "title": "ProductionEntry",
+      "description": "Enregistrement journalier d'une session de production de glace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de la production" },
+        "userId": { "type": "string", "description": "Propriétaire de l'enregistrement" },
+        "date": { "type": "string", "format": "date", "description": "Date de la production (YYYY-MM-DD)" },
+        "time": { "type": "string", "description": "Heure de la production (HH:MM)" },
+        "pockets12kg": { "type": "integer", "description": "Nombre de poches de 12kg" },
+        "bags27kg": { "type": "integer", "description": "Nombre de sacs de 2,7kg" },
+        "status": { "type": "string", "enum": ["Non payé", "Payé"], "description": "Statut de paiement" },
+        "payId": { "type": "string", "description": "ID du paiement lié" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp de création" }
+      },
+      "required": ["id", "userId", "date", "pockets12kg", "bags27kg", "status", "createdAt"]
+    },
+    "PayPayment": {
+      "title": "PayPayment",
+      "description": "Versement ou paye validée et remise à l'employé",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de la paye" },
+        "userId": { "type": "string", "description": "Propriétaire de la paye" },
+        "datePaye": { "type": "string", "format": "date", "description": "Date de versement (YYYY-MM-DD)" },
+        "amountTotal": { "type": "number", "description": "Montant total remis" },
+        "includedEntries": { "type": "array", "description": "Liste d'IDs de production inclus" },
+        "notes": { "type": "string", "description": "Note ou commentaire" }
+      },
+      "required": ["id", "userId", "datePaye", "amountTotal", "includedEntries"]
+    },
+    "EventCategory": {
+      "title": "EventCategory",
+      "description": "Catégorie de rendez-vous ou d'activité de l'agenda",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de la catégorie" },
+        "userId": { "type": "string", "description": "Propriétaire de la catégorie" },
+        "name": { "type": "string", "description": "Nom de la catégorie" },
+        "color": { "type": "string", "description": "Variable CSS de couleur" },
+        "icon": { "type": "string", "description": "Nom de l'icône Lucide" }
+      },
+      "required": ["id", "userId", "name", "color", "icon"]
+    },
+    "CalendarEvent": {
+      "title": "CalendarEvent",
+      "description": "Rendez-vous, quarts ou tâches planifiées de l'agenda",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de l'événement" },
+        "userId": { "type": "string", "description": "Propriétaire de l'événement" },
+        "title": { "type": "string", "description": "Titre" },
+        "description": { "type": "string", "description": "Description additionnelle" },
+        "date": { "type": "string", "format": "date", "description": "Date (YYYY-MM-DD)" },
+        "time": { "type": "string", "description": "Heure (HH:MM)" },
+        "duration": { "type": "string", "description": "Durée (ex: 2h)" },
+        "category": { "type": "string", "description": "ID ou nom de la catégorie" },
+        "reminder": { "type": "boolean", "description": "Rappel actif" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Date de création" }
+      },
+      "required": ["id", "userId", "title", "date", "time", "duration", "category", "reminder", "createdAt"]
+    },
+    "QuickNote": {
+      "title": "QuickNote",
+      "description": "Note rapide persistée",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de la note" },
+        "userId": { "type": "string", "description": "Propriétaire de la note" },
+        "title": { "type": "string", "description": "Titre de la note" },
+        "content": { "type": "string", "description": "Contenu texte" },
+        "date": { "type": "string", "description": "Date" },
+        "categoryId": { "type": "string", "description": "Optionnel ID de la catégorie liée" }
+      },
+      "required": ["id", "userId", "title", "content", "date"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Réglages de l'application (mode sombre et tarifs)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifiant de configuration (ID utilisateur)" },
+        "userId": { "type": "string", "description": "ID utilisateur propriétaire" },
+        "darkMode": { "type": "boolean", "description": "Statut du mode sombre" },
+        "pocketPrice": { "type": "number", "description": "Tarif par poche de 12kg" },
+        "bagPrice": { "type": "number", "description": "Tarif par sac de 2,7kg" }
+      },
+      "required": ["id", "userId", "darkMode", "pocketPrice", "bagPrice"]
+    }
+  },
+  "firestore": {
+    "production/{entryId}": {
+      "schema": "ProductionEntry",
+      "description": "Collection de rapports de production"
+    },
+    "payments/{paymentId}": {
+      "schema": "PayPayment",
+      "description": "Collection de fiches de payes émises"
+    },
+    "categories/{categoryId}": {
+      "schema": "EventCategory",
+      "description": "Collection de catégories d'agenda"
+    },
+    "events/{eventId}": {
+      "schema": "CalendarEvent",
+      "description": "Collection d'événements de l'agenda"
+    },
+    "notes/{noteId}": {
+      "schema": "QuickNote",
+      "description": "Collection de notes rapides"
+    },
+    "settings/{settingsId}": {
+      "schema": "AppSettings",
+      "description": "Configuration utilisateur et tarifs de fabrication"
+    }
+  }
+}

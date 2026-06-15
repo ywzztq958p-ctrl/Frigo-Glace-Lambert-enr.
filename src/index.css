@@ -1,1 +1,109 @@
 @import "tailwindcss";
+
+@theme {
+  --animate-spin-slow: spin 8s linear infinite;
+}
+
+/* Custom transitions */
+* {
+  transition-property: background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Dark mode generic overrides */
+html.dark {
+  background-color: #0b0f19;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
+}
+
+/* Background overrides */
+html.dark .bg-white {
+  background-color: #111827 !important; /* gray-900 */
+}
+
+html.dark .bg-slate-50 {
+  background-color: #0b0f19 !important; /* deep dark */
+}
+
+html.dark .bg-slate-100 {
+  background-color: #1f2937 !important; /* gray-800 */
+}
+
+html.dark .bg-slate-200 {
+  background-color: #374151 !important; /* gray-700 */
+}
+
+html.dark .bg-slate-100\/50 {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+}
+
+html.dark .bg-slate-50\/50 {
+  background-color: rgba(11, 15, 25, 0.5) !important;
+}
+
+/* Text overrides */
+html.dark .text-slate-900 {
+  color: #f8fafc !important; /* slate-50 */
+}
+
+html.dark .text-slate-800 {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+
+html.dark .text-slate-700 {
+  color: #e2e8f0 !important; /* slate-200 */
+}
+
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important; /* slate-300 */
+}
+
+html.dark .text-slate-500 {
+  color: #94a3b8 !important; /* slate-400 */
+}
+
+html.dark .text-slate-400 {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* Borders overrides */
+html.dark .border-slate-100 {
+  border-color: #1f2937 !important; /* gray-800 */
+}
+
+html.dark .border-slate-200 {
+  border-color: #374151 !important; /* gray-700 */
+}
+
+html.dark .border-slate-300 {
+  border-color: #4b5563 !important; /* gray-600 */
+}
+
+html.dark .border-slate-50 {
+  border-color: #1f2937 !important; /* gray-800 */
+}
+
+/* Form controls focus/bg override */
+html.dark input, html.dark select, html.dark textarea {
+  background-color: #1f2937 !important;
+  color: #f8fafc !important;
+  border-color: #374151 !important;
+}
+
+html.dark input::placeholder, html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Exclude specific prints or custom panels */
+@media print {
+  html.dark body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+}

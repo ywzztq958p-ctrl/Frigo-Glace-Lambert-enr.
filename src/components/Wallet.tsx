@@ -24,7 +24,7 @@ import {
   X
 } from 'lucide-react';
 import { ProductionEntry, PayPayment } from '../types';
-import { POCKET_PRICE, BAG_PRICE, formatCurrency } from '../utils';
+import { formatCurrency } from '../utils';
 
 interface WalletProps {
   production: ProductionEntry[];
@@ -32,6 +32,8 @@ interface WalletProps {
   onMarkAsPaid: (entryIds: string[], notes: string) => void;
   onDeletePayment: (paymentId: string) => void;
   onNavigate?: (tab: string) => void;
+  pocketPrice: number;
+  bagPrice: number;
 }
 
 export default function Wallet({ 
@@ -39,7 +41,9 @@ export default function Wallet({
   payments, 
   onMarkAsPaid, 
   onDeletePayment,
-  onNavigate
+  onNavigate,
+  pocketPrice,
+  bagPrice
 }: WalletProps) {
   
   // Selection of entries to cash out
@@ -62,13 +66,13 @@ export default function Wallet({
 
   // Totals calculations
   const totalUnpaid = unpaidEntries.reduce((sum, e) => {
-    return sum + (e.pockets12kg * POCKET_PRICE) + (e.bags27kg * BAG_PRICE);
+    return sum + (e.pockets12kg * pocketPrice) + (e.bags27kg * bagPrice);
   }, 0);
 
   const totalPaid = production
     .filter(e => e.status === 'Payé')
     .reduce((sum, e) => {
-      return sum + (e.pockets12kg * POCKET_PRICE) + (e.bags27kg * BAG_PRICE);
+      return sum + (e.pockets12kg * pocketPrice) + (e.bags27kg * bagPrice);
     }, 0);
 
   const grandTotal = totalUnpaid + totalPaid;
@@ -92,7 +96,7 @@ export default function Wallet({
     const weeklyEntries = production.filter(entry => entry.date >= startStr && entry.date <= endStr);
     const totalPockets = weeklyEntries.reduce((sum, entry) => sum + entry.pockets12kg, 0);
     const totalBags = weeklyEntries.reduce((sum, entry) => sum + entry.bags27kg, 0);
-    const totalAmount = (totalPockets * POCKET_PRICE) + (totalBags * BAG_PRICE);
+    const totalAmount = (totalPockets * pocketPrice) + (totalBags * bagPrice);
 
     return {
       pockets: totalPockets,
@@ -167,7 +171,7 @@ export default function Wallet({
   const printEntries = getPrintEntries();
   const printPockets = printEntries.reduce((sum, e) => sum + e.pockets12kg, 0);
   const printBags = printEntries.reduce((sum, e) => sum + e.bags27kg, 0);
-  const printTotal = (printPockets * POCKET_PRICE) + (printBags * BAG_PRICE);
+  const printTotal = (printPockets * pocketPrice) + (printBags * bagPrice);
 
   return (
     <div className="space-y-6 print:hidden" id="wallet-tab">
@@ -292,7 +296,7 @@ export default function Wallet({
             <p className="text-xs text-slate-400">Période du {weeklyStats.start} au {weeklyStats.end}</p>
           </div>
           <div className="text-right text-xs text-slate-400 font-medium">
-            Tarifs : 0,40$/poche | 0,30$/sac
+            Tarifs : {pocketPrice.toFixed(2)}$/poche | {bagPrice.toFixed(2)}$/sac
           </div>
         </div>
         
@@ -300,12 +304,12 @@ export default function Wallet({
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total des Poches (12kg)</p>
             <p className="text-2xl font-black text-slate-800 mt-1 font-mono">{weeklyStats.pockets}</p>
-            <p className="text-[10px] text-slate-500 mt-1">Valeur brute : {formatCurrency(weeklyStats.pockets * POCKET_PRICE)}</p>
+            <p className="text-[10px] text-slate-500 mt-1">Valeur brute : {formatCurrency(weeklyStats.pockets * pocketPrice)}</p>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total des Sacs (2,7kg)</p>
             <p className="text-2xl font-black text-slate-800 mt-1 font-mono">{weeklyStats.bags}</p>
-            <p className="text-[10px] text-slate-500 mt-1">Valeur brute : {formatCurrency(weeklyStats.bags * BAG_PRICE)}</p>
+            <p className="text-[10px] text-slate-500 mt-1">Valeur brute : {formatCurrency(weeklyStats.bags * bagPrice)}</p>
           </div>
           <div className="bg-blue-50/40 p-4 rounded-2xl border border-blue-100">
             <p className="text-[10px] text-blue-600 uppercase font-bold tracking-wider">Total $ de la Semaine</p>
@@ -383,7 +387,7 @@ export default function Wallet({
                 {/* 2. Unpaid Entries Grid / Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
                   {unpaidEntries.map(entry => {
-                    const value = (entry.pockets12kg * POCKET_PRICE) + (entry.bags27kg * BAG_PRICE);
+                    const value = (entry.pockets12kg * pocketPrice) + (entry.bags27kg * bagPrice);
                     const isChecked = selectedEntryIds.includes(entry.id);
 
                     return (
@@ -651,7 +655,7 @@ export default function Wallet({
                 </tr>
               ) : (
                 printEntries.map(entry => {
-                  const entryTotal = (entry.pockets12kg * POCKET_PRICE) + (entry.bags27kg * BAG_PRICE);
+                  const entryTotal = (entry.pockets12kg * pocketPrice) + (entry.bags27kg * bagPrice);
                   return (
                     <tr key={entry.id} className="hover:bg-slate-50/50">
                       <td className="p-2 border border-slate-200 font-mono">{entry.date}</td>
@@ -671,18 +675,18 @@ export default function Wallet({
           <div>
             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Note d'approbation réglementaire</span>
             <p className="text-[11px] text-slate-500 leading-relaxed mt-1 italic">
-              Ce document fait office de relevé officiel d'activités pour Zachary Martel chez Frigo Glace Lambert enr. Les taux d'accumulation de 0,40$ par poche de 12kg et 0,30$ par sac de 2,7kg sont appliqués.
+              Ce document fait office de relevé officiel d'activités pour Zachary Martel chez Frigo Glace Lambert enr. Les taux d'accumulation de {pocketPrice.toFixed(2)}$ par poche de 12kg et {bagPrice.toFixed(2)}$ par sac de 2,7kg sont appliqués.
             </p>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-lg space-y-2 border border-slate-200 self-start">
             <div className="flex justify-between text-xs text-slate-600 font-mono">
-              <span>Total Poches ({printPockets} × {POCKET_PRICE.toFixed(2)}$) :</span>
-              <span>{formatCurrency(printPockets * POCKET_PRICE)}</span>
+              <span>Total Poches ({printPockets} × {pocketPrice.toFixed(2)}$) :</span>
+              <span>{formatCurrency(printPockets * pocketPrice)}</span>
             </div>
             <div className="flex justify-between text-xs text-slate-600 font-mono border-b border-slate-200 pb-2">
-              <span>Total Sacs ({printBags} × {BAG_PRICE.toFixed(2)}$) :</span>
-              <span>{formatCurrency(printBags * BAG_PRICE)}</span>
+              <span>Total Sacs ({printBags} × {bagPrice.toFixed(2)}$) :</span>
+              <span>{formatCurrency(printBags * bagPrice)}</span>
             </div>
             <div className="flex justify-between text-sm text-blue-900 font-sans font-black">
               <span>Règlement final :</span>

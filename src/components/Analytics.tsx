@@ -27,13 +27,15 @@ import {
   Coins 
 } from 'lucide-react';
 import { ProductionEntry } from '../types';
-import { POCKET_PRICE, BAG_PRICE, getWeekString, getMonthString } from '../utils';
+import { getWeekString, getMonthString } from '../utils';
 
 interface AnalyticsProps {
   entries: ProductionEntry[];
+  pocketPrice: number;
+  bagPrice: number;
 }
 
-export default function Analytics({ entries }: AnalyticsProps) {
+export default function Analytics({ entries, pocketPrice, bagPrice }: AnalyticsProps) {
   const [metricType, setMetricType] = useState<'both' | 'pockets' | 'bags' | 'wages'>('both');
 
   // Colors mapping for charts
@@ -48,8 +50,8 @@ export default function Analytics({ entries }: AnalyticsProps) {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14) // Last 14 days
     .map(entry => {
-      const wagesPockets = entry.pockets12kg * POCKET_PRICE;
-      const wagesBags = entry.bags27kg * BAG_PRICE;
+      const wagesPockets = entry.pockets12kg * pocketPrice;
+      const wagesBags = entry.bags27kg * bagPrice;
       const totalWages = wagesPockets + wagesBags;
       return {
         date: entry.date.split('-').slice(1).join('/'), // format as MM/DD
@@ -63,7 +65,7 @@ export default function Analytics({ entries }: AnalyticsProps) {
   const weeklyDataMap: Record<string, { pockets: number; bags: number; wages: number }> = {};
   entries.forEach(entry => {
     const week = getWeekString(entry.date);
-    const wages = (entry.pockets12kg * POCKET_PRICE) + (entry.bags27kg * BAG_PRICE);
+    const wages = (entry.pockets12kg * pocketPrice) + (entry.bags27kg * bagPrice);
     if (!weeklyDataMap[week]) {
       weeklyDataMap[week] = { pockets: 0, bags: 0, wages: 0 };
     }
@@ -85,7 +87,7 @@ export default function Analytics({ entries }: AnalyticsProps) {
   const monthlyDataMap: Record<string, { pockets: number; bags: number; wages: number }> = {};
   entries.forEach(entry => {
     const month = getMonthString(entry.date);
-    const wages = (entry.pockets12kg * POCKET_PRICE) + (entry.bags27kg * BAG_PRICE);
+    const wages = (entry.pockets12kg * pocketPrice) + (entry.bags27kg * bagPrice);
     if (!monthlyDataMap[month]) {
       monthlyDataMap[month] = { pockets: 0, bags: 0, wages: 0 };
     }
@@ -106,8 +108,8 @@ export default function Analytics({ entries }: AnalyticsProps) {
   // Process Pie Data (Volume and earnings distribution)
   const totalPockets = entries.reduce((sum, e) => sum + e.pockets12kg, 0);
   const totalBags = entries.reduce((sum, e) => sum + e.bags27kg, 0);
-  const totalPocketWages = totalPockets * POCKET_PRICE;
-  const totalBagWages = totalBags * BAG_PRICE;
+  const totalPocketWages = totalPockets * pocketPrice;
+  const totalBagWages = totalBags * bagPrice;
 
   const pieVolumeData = [
     { name: 'Poches (12 kg)', value: totalPockets },

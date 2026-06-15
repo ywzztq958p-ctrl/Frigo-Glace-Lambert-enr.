@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ProductionEntry, PayPayment, EventCategory, CalendarEvent, QuickNote } from './types';
+import { ProductionEntry, PayPayment, EventCategory, CalendarEvent, QuickNote, AppSettings } from './types';
 
 export const POCKET_PRICE = 0.40; // 12kg pocket = 0,40 $
 export const BAG_PRICE = 0.30;   // 2.7kg bag = 0,30 $
@@ -221,5 +221,24 @@ export const StorageAPI = {
   },
   saveNotes: (notes: QuickNote[]): void => {
     localStorage.setItem('lambert_notes', JSON.stringify(notes));
+  },
+
+  getSettings: (): AppSettings => {
+    const raw = localStorage.getItem('lambert_settings');
+    const defaultSettings: AppSettings = {
+      id: 'default',
+      userId: 'default',
+      darkMode: false,
+      pocketPrice: 0.40,
+      bagPrice: 0.30
+    };
+    if (!raw) {
+      localStorage.setItem('lambert_settings', JSON.stringify(defaultSettings));
+      return defaultSettings;
+    }
+    return JSON.parse(raw);
+  },
+  saveSettings: (settings: AppSettings): void => {
+    localStorage.setItem('lambert_settings', JSON.stringify(settings));
   }
 };

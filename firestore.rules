@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net default catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    function isValidProductionEntry(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.date is string && data.date.size() == 10
+        && (data.time == null || (data.time is string && data.time.size() <= 10))
+        && data.pockets12kg is int && data.pockets12kg >= 0
+        && data.bags27kg is int && data.bags27kg >= 0
+        && (data.status == 'Non payé' || data.status == 'Payé')
+        && (data.payId == null || (data.payId is string && data.payId.size() <= 128))
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidPayPayment(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.datePaye is string && data.datePaye.size() == 10
+        && (data.amountTotal is int || data.amountTotal is float) && data.amountTotal >= 0
+        && data.includedEntries is list && data.includedEntries.size() <= 500
+        && (data.notes == null || (data.notes is string && data.notes.size() <= 2000));
+    }
+
+    function isValidEventCategory(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && data.color is string && data.color.size() <= 50
+        && data.icon is string && data.icon.size() <= 50;
+    }
+
+    function isValidCalendarEvent(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 200
+        && (data.description == null || (data.description is string && data.description.size() <= 2000))
+        && data.date is string && data.date.size() == 10
+        && data.time is string && data.time.size() <= 10
+        && data.duration is string && data.duration.size() <= 20
+        && data.category is string && data.category.size() <= 100
+        && data.reminder is bool
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidQuickNote(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 10000
+        && data.date is string && data.date.size() <= 50
+        && (data.categoryId == null || (data.categoryId is string && data.categoryId.size() <= 128));
+    }
+
+    function isValidAppSettings(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.darkMode is bool
+        && (data.pocketPrice is int || data.pocketPrice is float) && data.pocketPrice >= 0
+        && (data.bagPrice is int || data.bagPrice is float) && data.bagPrice >= 0;
+    }
+
+    // --- COLLECTIONS RULES MATCHING ---
+
+    // 1. Production entries
+    match /production/{entryId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+        && isValidId(entryId) 
+        && entryId == incoming().id
+        && isValidProductionEntry(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(entryId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidProductionEntry(incoming())
+        && incoming().createdAt == existing().createdAt; // createdAt is immortal
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // 2. Verified cashout and payments
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(paymentId)
+        && paymentId == incoming().id
+        && isValidPayPayment(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(paymentId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidPayPayment(incoming());
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // 3. Event Categories
+    match /categories/{categoryId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(categoryId)
+        && categoryId == incoming().id
+        && isValidEventCategory(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(categoryId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidEventCategory(incoming());
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // 4. Calendar Events
+    match /events/{eventId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(eventId)
+        && eventId == incoming().id
+        && isValidCalendarEvent(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(eventId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidCalendarEvent(incoming())
+        && incoming().createdAt == existing().createdAt; // createdAt is immortal
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // 5. Quick Notes
+    match /notes/{noteId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(noteId)
+        && noteId == incoming().id
+        && isValidQuickNote(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(noteId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidQuickNote(incoming());
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // 6. App Settings
+    match /settings/{settingsId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(settingsId)
+        && settingsId == incoming().id
+        && isValidAppSettings(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(settingsId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && isValidAppSettings(incoming());
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}

@@ -48,3 +48,12 @@ export interface QuickNote {
   date: string; // YYYY-MM-DD or date string
   categoryId?: string | null;
 }
+
+export interface AppSettings {
+  id: string; // usually userId
+  userId: string;
+  darkMode: boolean;
+  pocketPrice: number;
+  bagPrice: number;
+}
+

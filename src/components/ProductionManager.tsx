@@ -19,20 +19,24 @@ import {
   Check
 } from 'lucide-react';
 import { ProductionEntry } from '../types';
-import { POCKET_PRICE, BAG_PRICE, formatCurrency } from '../utils';
+import { formatCurrency } from '../utils';
 
 interface ProductionManagerProps {
   entries: ProductionEntry[];
   onAddEntry: (entry: Omit<ProductionEntry, 'id' | 'createdAt'>) => void;
   onUpdateEntry: (id: string, updated: Partial<ProductionEntry>) => void;
   onDeleteEntry: (id: string) => void;
+  pocketPrice: number;
+  bagPrice: number;
 }
 
 export default function ProductionManager({ 
   entries, 
   onAddEntry, 
   onUpdateEntry, 
-  onDeleteEntry 
+  onDeleteEntry,
+  pocketPrice,
+  bagPrice
 }: ProductionManagerProps) {
   
   // State for Form inputs
@@ -209,8 +213,8 @@ export default function ProductionManager({
     });
 
   // Calculations for current inputs
-  const formPocketEarnings = pockets12kg * POCKET_PRICE;
-  const formBagEarnings = bags27kg * BAG_PRICE;
+  const formPocketEarnings = pockets12kg * pocketPrice;
+  const formBagEarnings = bags27kg * bagPrice;
   const formTotalEarnings = formPocketEarnings + formBagEarnings;
 
   return (
@@ -436,7 +440,7 @@ export default function ProductionManager({
             </div>
           ) : (
             filteredEntries.map(entry => {
-              const dayTotalValue = (entry.pockets12kg * POCKET_PRICE) + (entry.bags27kg * BAG_PRICE);
+              const dayTotalValue = (entry.pockets12kg * pocketPrice) + (entry.bags27kg * bagPrice);
               const isChecked = selectedIds.includes(entry.id);
               
               return (
