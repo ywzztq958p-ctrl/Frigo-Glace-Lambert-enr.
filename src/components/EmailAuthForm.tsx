@@ -4,19 +4,21 @@
  */
 
 import React, { useState } from 'react';
-import { signInWithEmail, signUpWithEmail } from '../firebase';
+import { CustomServerSync, CustomUser } from '../customServerSync';
 import { Mail, Lock, UserPlus, KeyRound, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface EmailAuthFormProps {
   onSuccess?: () => void;
+  onUserLoggedIn: (user: CustomUser) => void;
   isDarkBg?: boolean;
 }
 
-export default function EmailAuthForm({ onSuccess, isDarkBg = false }: EmailAuthFormProps) {
+export default function EmailAuthForm({ onSuccess, onUserLoggedIn, isDarkBg = false }: EmailAuthFormProps) {
   const [isRegister, setIsRegister] = useState<boolean>(false);
-  const [email, setEmail] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -26,8 +28,9 @@ export default function EmailAuthForm({ onSuccess, isDarkBg = false }: EmailAuth
     setErrorLocal(null);
     setSuccessMsg(null);
 
-    if (!email || !password) {
-      setErrorLocal('Veuillez remplir tous les champs requis.');
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) {
+      setErrorLocal('Le nom d\'utilisateur et le mot de passe sont requis.');
       return;
     }
 
@@ -39,32 +42,28 @@ export default function EmailAuthForm({ onSuccess, isDarkBg = false }: EmailAuth
     setLoading(true);
     try {
       if (isRegister) {
-        await signUpWithEmail(email, password, name.trim() || undefined);
-        setSuccessMsg('Compte créé avec succès ! Connecté.');
+        const u = await CustomServerSync.register(
+          cleanUsername,
+          password,
+          email.trim() || undefined,
+          displayName.trim() || undefined
+        );
+        setSuccessMsg('Compte créé avec succès ! Session active.');
+        setTimeout(() => {
+          onUserLoggedIn(u);
+          if (onSuccess) onSuccess();
+        }, 1000);
       } else {
-        await signInWithEmail(email, password);
+        const u = await CustomServerSync.login(cleanUsername, password);
         setSuccessMsg('Connexion réussie !');
+        setTimeout(() => {
+          onUserLoggedIn(u);
+          if (onSuccess) onSuccess();
+        }, 1000);
       }
-      setTimeout(() => {
-        if (onSuccess) onSuccess();
-      }, 1000);
     } catch (err: any) {
       console.error(err);
-      let localizedError = "Échec de l'authentification.";
-      if (err.code === 'auth/email-already-in-use') {
-        localizedError = 'Cette adresse courriel est déjà utilisée.';
-      } else if (err.code === 'auth/invalid-email') {
-        localizedError = 'Adresse courriel invalide.';
-      } else if (err.code === 'auth/weak-password') {
-        localizedError = 'Le mot de passe est trop faible.';
-      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        localizedError = 'Identifiants invalides (courriel ou mot de passe incorrect).';
-      } else if (err.message && err.message.includes('CONFIGURATION_NOT_FOUND')) {
-        localizedError = "Le service de connexion Email/Mot de passe n'est pas encore activé dans votre console Firebase. Veuillez l'activer pour continuer.";
-      } else {
-        localizedError = err.message || localizedError;
-      }
-      setErrorLocal(localizedError);
+      setErrorLocal(err.message || "Échec de l'authentification.");
     } finally {
       setLoading(false);
     }
@@ -80,7 +79,7 @@ export default function EmailAuthForm({ onSuccess, isDarkBg = false }: EmailAuth
       <div className="flex items-center justify-between border-b pb-2 mb-2 border-slate-100/10">
         <h4 className={`text-xs font-black uppercase tracking-wider flex items-center gap-1.5 ${textClass}`}>
           {isRegister ? <UserPlus size={13} className="text-blue-500" /> : <KeyRound size={13} className="text-blue-500" />}
-          {isRegister ? "Créer un compte" : "Connexion Email"}
+          {isRegister ? "Créer un compte" : "Connexion Lambert"}
         </h4>
         <button
           type="button"
@@ -91,48 +90,66 @@ export default function EmailAuthForm({ onSuccess, isDarkBg = false }: EmailAuth
           }}
           className={`text-[10px] font-bold ${toggleLinkClass} transition`}
         >
-          {isRegister ? "Plutôt se connecter ?" : "S'inscrire ?"}
+          {isRegister ? "Plutôt se connecter ?" : "Nouveau ? S'inscrire"}
         </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-2.5">
-        {isRegister && (
-          <div className="space-y-1">
-            <label className={`text-[9px] uppercase font-black tracking-wider ${labelClass}`}>
-              Nom d'utilisateur
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Zachary"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={loading}
-                className={`w-full text-[11px] px-3 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 transition-all ${inputBgClass}`}
-              />
-            </div>
-          </div>
-        )}
-
         <div className="space-y-1">
           <label className={`text-[9px] uppercase font-black tracking-wider ${labelClass}`}>
-            Adresse Courriel
+            Identifiant / Nom d'utilisateur
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-450 pointer-events-none">
               <Mail size={11} className="text-slate-400" />
             </span>
             <input
-              type="email"
-              placeholder="votre_courriel@exemple.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="Ex: zachary"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               disabled={loading}
               className={`w-full text-[11px] pl-8 pr-3 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 transition-all ${inputBgClass}`}
               required
             />
           </div>
         </div>
+
+        {isRegister && (
+          <>
+            <div className="space-y-1">
+              <label className={`text-[9px] uppercase font-black tracking-wider ${labelClass}`}>
+                Nom complet d'affichage (Optionnel)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ex: Zachary Martel"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={loading}
+                  className={`w-full text-[11px] px-3 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 transition-all ${inputBgClass}`}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className={`text-[9px] uppercase font-black tracking-wider ${labelClass}`}>
+                Adresse Courriel (Optionnelle)
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  placeholder="Ex: info@exemple.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                  className={`w-full text-[11px] px-3 py-2.5 rounded-xl border focus:outline-none focus:border-blue-500 transition-all ${inputBgClass}`}
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="space-y-1">
           <label className={`text-[9px] uppercase font-black tracking-wider ${labelClass}`}>

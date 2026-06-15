@@ -24,8 +24,9 @@ import {
 } from 'lucide-react';
 
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, signInWithGoogle, logOut, signInWithEmail, signUpWithEmail } from './firebase';
+import { auth, logOut } from './firebase';
 import { FirebaseSync } from './firebaseSync';
+import { CustomServerSync, CustomUser } from './customServerSync';
 import { StorageAPI } from './utils';
 import { ProductionEntry, PayPayment, EventCategory, CalendarEvent, QuickNote, AppSettings } from './types';
 
@@ -71,9 +72,65 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
-  // Load from Storage API or Firestore depending on auth
+  // Load from Storage API or Custom Server or Firestore depending on auth
   useEffect(() => {
+    // 1. Check custom server authentication state first
+    const storedCustom = localStorage.getItem('lambert_custom_user');
+    if (storedCustom) {
+      try {
+        const parsedUser = JSON.parse(storedCustom);
+        setUser({
+          uid: parsedUser.uid,
+          displayName: parsedUser.displayName,
+          email: parsedUser.email,
+          username: parsedUser.username,
+          isCustom: true
+        });
+        setSyncStatus('syncing');
+
+        CustomServerSync.load(parsedUser.uid).then((res) => {
+          if (res) {
+            if (res.production) setProduction(res.production);
+            if (res.payments) setPayments(res.payments);
+            if (res.categories && res.categories.length > 0) {
+              setCategories(res.categories);
+            } else {
+              setCategories(StorageAPI.getCategories());
+            }
+            if (res.events) setEvents(res.events);
+            if (res.notes) setNotes(res.notes);
+            if (res.settings) {
+              setSettings(res.settings);
+            } else {
+              setSettings(StorageAPI.getSettings());
+            }
+            setSyncStatus('synced');
+          }
+          setAuthLoading(false);
+        }).catch((err) => {
+          console.error("Erreur lors du chargement depuis le serveur personnalisé:", err);
+          setProduction(StorageAPI.getProduction());
+          setPayments(StorageAPI.getPayments());
+          setCategories(StorageAPI.getCategories());
+          setEvents(StorageAPI.getEvents());
+          setNotes(StorageAPI.getNotes());
+          setSettings(StorageAPI.getSettings());
+          setSyncStatus('error');
+          setAuthLoading(false);
+        });
+
+        // Bypassing Firebase if logged in with Custom Data Center
+        return;
+      } catch (err) {
+        console.error("Erreur de décodage de l'utilisateur personnalisé:", err);
+      }
+    }
+
+    // 2. Fallback / Mainstream Firebase
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      // Prevents overwriting custom user if exists
+      if (localStorage.getItem('lambert_custom_user')) return;
+
       setUser(currentUser);
       setAuthLoading(false);
 
@@ -142,12 +199,102 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // background autosave for Custom Server "Data Center" profile
+  useEffect(() => {
+    if (user && user.isCustom) {
+      const dataToSave = {
+        production,
+        payments,
+        categories,
+        events,
+        notes,
+        settings
+      };
+      const saveToCustomServer = async () => {
+        try {
+          setSyncStatus('syncing');
+          await CustomServerSync.save(user.uid, dataToSave);
+          setSyncStatus('synced');
+        } catch (e) {
+          console.error("Auto-sync saving error:", e);
+          setSyncStatus('error');
+        }
+      };
+
+      const timer = setTimeout(saveToCustomServer, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [production, payments, categories, events, notes, settings, user]);
+
+  const handleCustomUserLoggedIn = async (customUser: CustomUser) => {
+    const wrappedUser = {
+      uid: customUser.uid,
+      displayName: customUser.displayName,
+      email: customUser.email,
+      username: customUser.username,
+      isCustom: true
+    };
+    localStorage.setItem('lambert_custom_user', JSON.stringify(wrappedUser));
+    setUser(wrappedUser);
+    setSyncStatus('syncing');
+
+    try {
+      // Migrate Offline local records to server if server is empty
+      const localProd = StorageAPI.getProduction();
+      const localPay = StorageAPI.getPayments();
+      const localCat = StorageAPI.getCategories();
+      const localEvt = StorageAPI.getEvents();
+      const localNote = StorageAPI.getNotes();
+      const localSettings = StorageAPI.getSettings();
+
+      const serverDataset = await CustomServerSync.load(customUser.uid);
+
+      const finalDataset = {
+        production: serverDataset.production && serverDataset.production.length > 0 ? serverDataset.production : localProd,
+        payments: serverDataset.payments && serverDataset.payments.length > 0 ? serverDataset.payments : localPay,
+        categories: serverDataset.categories && serverDataset.categories.length > 0 ? serverDataset.categories : localCat,
+        events: serverDataset.events && serverDataset.events.length > 0 ? serverDataset.events : localEvt,
+        notes: serverDataset.notes && serverDataset.notes.length > 0 ? serverDataset.notes : localNote,
+        settings: serverDataset.settings ? serverDataset.settings : localSettings
+      };
+
+      await CustomServerSync.save(customUser.uid, finalDataset);
+
+      setProduction(finalDataset.production);
+      setPayments(finalDataset.payments);
+      setCategories(finalDataset.categories);
+      setEvents(finalDataset.events);
+      setNotes(finalDataset.notes);
+      setSettings(finalDataset.settings);
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Erreur d'importation vers le serveur personnalisé:", e);
+      setSyncStatus('error');
+    }
+  };
+
+  const handleLogOut = async () => {
+    if (user && user.isCustom) {
+      localStorage.removeItem('lambert_custom_user');
+      setUser(null);
+      setProduction(StorageAPI.getProduction());
+      setPayments(StorageAPI.getPayments());
+      setCategories(StorageAPI.getCategories());
+      setEvents(StorageAPI.getEvents());
+      setNotes(StorageAPI.getNotes());
+      setSettings(StorageAPI.getSettings());
+      setSyncStatus('idle');
+    } else {
+      await logOut();
+    }
+  };
+
   const handleUpdateSettings = async (updatedFields: Partial<AppSettings>) => {
     const newSettings = { ...settings, ...updatedFields };
     setSettings(newSettings);
     StorageAPI.saveSettings(newSettings);
 
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveSettings(user.uid, {
         darkMode: newSettings.darkMode,
         pocketPrice: newSettings.pocketPrice,
@@ -171,7 +318,7 @@ export default function App() {
       id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       createdAt: new Date().toISOString()
     };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveProductionEntry(user.uid, freshEntry);
     } else {
       const updated = [freshEntry, ...production];
@@ -184,7 +331,7 @@ export default function App() {
     const target = production.find(item => item.id === id);
     if (!target) return;
     const updatedUserEntry = { ...target, ...updatedFields };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveProductionEntry(user.uid, updatedUserEntry);
     } else {
       const updated = production.map(item => {
@@ -199,7 +346,7 @@ export default function App() {
   };
 
   const handleDeleteEntry = async (id: string) => {
-    if (user) {
+    if (user && !user.isCustom) {
       // Revert states in DB
       await FirebaseSync.deleteProductionEntry(id);
 
@@ -282,7 +429,7 @@ export default function App() {
       return item;
     });
 
-    if (user) {
+    if (user && !user.isCustom) {
       // In cloud mode, write modifications to database
       for (const entry of mappedWithPayId) {
         if (entryIds.includes(entry.id)) {
@@ -313,7 +460,7 @@ export default function App() {
       return item;
     });
 
-    if (user) {
+    if (user && !user.isCustom) {
       for (const entryRef of restoredProduction) {
         if (entryRef.payId === paymentId || payment.includedEntries.includes(entryRef.id)) {
           await FirebaseSync.saveProductionEntry(user.uid, entryRef);
@@ -336,7 +483,7 @@ export default function App() {
       ...newCat,
       id: `cat-${Date.now()}`
     };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveCategory(user.uid, freshCat);
     } else {
       const updated = [...categories, freshCat];
@@ -346,7 +493,7 @@ export default function App() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.deleteCategory(id);
     } else {
       const updated = categories.filter(c => c.id !== id);
@@ -362,7 +509,7 @@ export default function App() {
       id: `evt-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveEvent(user.uid, freshEvent);
     } else {
       const updated = [freshEvent, ...events];
@@ -375,7 +522,7 @@ export default function App() {
     const target = events.find(item => item.id === id);
     if (!target) return;
     const updatedUserEvent = { ...target, ...updatedFields };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveEvent(user.uid, updatedUserEvent);
     } else {
       const updated = events.map(item => {
@@ -390,7 +537,7 @@ export default function App() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.deleteEvent(id);
     } else {
       const updated = events.filter(item => item.id !== id);
@@ -405,7 +552,7 @@ export default function App() {
       ...newNote,
       id: `note-${Date.now()}`
     };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveNote(user.uid, freshNote);
     } else {
       const updated = [freshNote, ...notes];
@@ -418,7 +565,7 @@ export default function App() {
     const target = notes.find(item => item.id === id);
     if (!target) return;
     const updatedUserNote = { ...target, ...updatedFields };
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.saveNote(user.uid, updatedUserNote);
     } else {
       const updated = notes.map(item => {
@@ -433,7 +580,7 @@ export default function App() {
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (user) {
+    if (user && !user.isCustom) {
       await FirebaseSync.deleteNote(id);
     } else {
       const updated = notes.filter(item => item.id !== id);
@@ -566,15 +713,13 @@ export default function App() {
                     </p>
                     <span className="text-[9px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
                       <Cloud size={10} className="stroke-[2.5]" />
-                      Cloud Sync Actif
+                      {user.isCustom ? 'Data Center Actif' : 'Cloud Sync Actif'}
                     </span>
                   </div>
                 </div>
                 
                 <button
-                  onClick={async () => {
-                    await logOut();
-                  }}
+                  onClick={handleLogOut}
                   className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all select-none cursor-pointer"
                 >
                   <LogOut size={11} />
@@ -586,34 +731,14 @@ export default function App() {
                 <div className="space-y-1">
                   <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1">
                     <Cloud size={10} className="text-amber-500" />
-                    Sauvegarde Cloud
+                    Serveur Lambert
                   </p>
                   <p className="text-[10.5px] text-slate-400 font-bold leading-relaxed">
-                    Accédez à vos données n'importe où ! Si la connexion Google ne fonctionne pas sur votre iPhone, utilisez l'option Email ci-dessous.
+                    S'inscrire sans Firebase ! Créez un compte rapide pour synchroniser et sécuriser vos données sur notre serveur local.
                   </p>
                 </div>
                 
-                <button
-                  onClick={async () => {
-                    try {
-                      await signInWithGoogle();
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none cursor-pointer shadow-md shadow-blue-900/30"
-                >
-                  <LogIn size={11} />
-                  <span>Connexion Google</span>
-                </button>
-
-                <div className="relative flex py-1 items-center">
-                  <div className="flex-grow border-t border-slate-800"></div>
-                  <span className="flex-shrink mx-2 text-[8px] text-slate-500 uppercase font-black">OU</span>
-                  <div className="flex-grow border-t border-slate-800"></div>
-                </div>
-
-                <EmailAuthForm isDarkBg={true} />
+                <EmailAuthForm onUserLoggedIn={handleCustomUserLoggedIn} isDarkBg={true} />
               </div>
             )}
           </div>
@@ -787,13 +912,13 @@ export default function App() {
                           {user.displayName || 'Utilisateur'}
                         </span>
                         <span className="text-[8px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                          <Cloud size={8} /> Données synchronisées
+                          <Cloud size={8} /> {user.isCustom ? 'Serveur Lambert Actif' : 'Données synchronisées'}
                         </span>
                       </div>
                     </div>
                     <button
                       onClick={async () => {
-                        await logOut();
+                        await handleLogOut();
                         setMobileMenuOpen(false);
                       }}
                       className="p-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-[9px] font-black uppercase rounded-lg border border-red-100 cursor-pointer transition whitespace-nowrap"
@@ -803,28 +928,9 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-3 px-3">
-                    <p className="text-[9px] text-slate-400 font-bold">Connectez-vous pour conserver vos données et y accéder sur d'autres appareils :</p>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await signInWithGoogle();
-                          setMobileMenuOpen(false);
-                        } catch (e) {
-                          console.error(e);
-                        }
-                      }}
-                      className="w-full py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition cursor-pointer"
-                    >
-                      <LogIn size={11} /> Connexion Google
-                    </button>
+                    <p className="text-[9px] text-slate-400 font-bold">Connectez-vous à votre compte Lambert sans Firebase pour conserver vos données :</p>
 
-                    <div className="relative flex py-0.5 items-center">
-                      <div className="flex-grow border-t border-slate-100"></div>
-                      <span className="flex-shrink mx-2 text-[8px] text-slate-450 uppercase font-bold">OU</span>
-                      <div className="flex-grow border-t border-slate-100"></div>
-                    </div>
-
-                    <EmailAuthForm onSuccess={() => setMobileMenuOpen(false)} isDarkBg={false} />
+                    <EmailAuthForm onUserLoggedIn={(u) => { handleCustomUserLoggedIn(u); setMobileMenuOpen(false); }} onSuccess={() => setMobileMenuOpen(false)} isDarkBg={false} />
                   </div>
                 )}
               </div>
