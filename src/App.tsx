@@ -486,6 +486,7 @@ export default function App() {
                   payments={payments}
                   onMarkAsPaid={handleMarkAsPaid}
                   onDeletePayment={handleDeletePayment}
+                  onNavigate={(tab) => { setActiveTab(tab); }}
                 />
               )}
 

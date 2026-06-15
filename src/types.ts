@@ -6,6 +6,7 @@
 export interface ProductionEntry {
   id: string;
   date: string; // YYYY-MM-DD
+  time?: string; // HH:MM
   pockets12kg: number; // 0.40$ per unit
   bags27kg: number; // 0.30$ per unit
   status: 'Non payé' | 'Payé';
