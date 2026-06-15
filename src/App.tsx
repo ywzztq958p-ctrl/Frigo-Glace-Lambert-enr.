@@ -20,8 +20,17 @@ import {
   LogOut,
   Cloud,
   RefreshCw,
-  Settings
+  Settings,
+  Bell
 } from 'lucide-react';
+
+interface NotificationAlert {
+  id: string;
+  eventTitle: string;
+  timeLabel: string;
+  message: string;
+  createdAt: number;
+}
 
 import { CustomServerSync, CustomUser } from './customServerSync';
 import { StorageAPI } from './utils';
@@ -74,6 +83,17 @@ export default function App() {
   });
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+
+  // Reminders notifications engine state
+  const [reminderNotifications, setReminderNotifications] = useState<NotificationAlert[]>([]);
+  const [triggeredReminders, setTriggeredReminders] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('lambert_triggered_reminders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Load automatically from Custom Server "Data Center" account for Zachary Martel
   useEffect(() => {
@@ -155,6 +175,156 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [production, payments, categories, events, notes, settings, user]);
+
+  // Helper to play clean notification sound via Web Audio API synthesizer
+  const playNotificationSound = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(783.99, ctx.currentTime + 0.15); // G5
+      gain2.gain.setValueAtTime(0.001, ctx.currentTime + 0.15);
+      gain2.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.2);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+      
+      osc2.start(ctx.currentTime + 0.15);
+      osc2.stop(ctx.currentTime + 0.45);
+    } catch (err) {
+      console.warn("Could not play synthesized sound:", err);
+    }
+  };
+
+  // Request native HTML5 browser notification permission cleanly
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  // Calendar events reminders tracking and triggering loop
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = new Date();
+      const nowMs = now.getTime();
+      
+      let updatedTriggered = [...triggeredReminders];
+      let triggeredAny = false;
+      const newNotifications: NotificationAlert[] = [];
+
+      events.forEach(event => {
+        // Must have reminder enabled
+        if (!event.reminder || !event.date) return;
+        
+        const rTime = event.reminderTime || '15m';
+        if (rTime === 'none') return;
+
+        // Unique key for this reminder trigger
+        const triggerKey = `${event.id}_${rTime}`;
+        if (updatedTriggered.includes(triggerKey)) return;
+
+        // Parse event scheduled date and time
+        const dateParts = event.date.split('-');
+        if (dateParts.length !== 3) return;
+        const year = parseInt(dateParts[0], 10);
+        const month = parseInt(dateParts[1], 10) - 1;
+        const day = parseInt(dateParts[2], 10);
+
+        const timeStr = event.time || '00:00';
+        const timeParts = timeStr.split(':');
+        const hour = timeParts.length >= 2 ? parseInt(timeParts[0], 10) : 0;
+        const minute = timeParts.length >= 2 ? parseInt(timeParts[1], 10) : 0;
+
+        const eventDate = new Date(year, month, day, hour, minute, 0, 0);
+        const eventTimeMs = eventDate.getTime();
+
+        // Calc offset
+        let offsetMs = 0;
+        let offsetLabel = "à l'heure de l'événement";
+        if (rTime === '15m') {
+          offsetMs = 15 * 60 * 1000;
+          offsetLabel = "15 minutes avant";
+        } else if (rTime === '1h') {
+          offsetMs = 60 * 60 * 1000;
+          offsetLabel = "1 heure avant";
+        } else if (rTime === '1d') {
+          offsetMs = 24 * 60 * 60 * 1000;
+          offsetLabel = "1 jour avant";
+        }
+
+        const triggerTimeMs = eventTimeMs - offsetMs;
+
+        // Only trigger if:
+        // 1. Current time meets or exceeds trigger time
+        // 2. Current time is not older than 1 hour after standard event start (safety block)
+        const isPastTrigger = nowMs >= triggerTimeMs;
+        const isRecent = nowMs < eventTimeMs + (60 * 60 * 1000);
+
+        if (isPastTrigger && isRecent) {
+          // Trigger this reminder!
+          updatedTriggered.push(triggerKey);
+          triggeredAny = true;
+
+          newNotifications.push({
+            id: `notif-${Date.now()}-${event.id}`,
+            eventTitle: event.title,
+            timeLabel: offsetLabel,
+            message: `Cet événement est programmé à ${timeStr} pour une durée de ${event.duration || 'N/A'}.${event.description ? ` "${event.description}"` : ''}`,
+            createdAt: Date.now()
+          });
+
+          // Standard browser native popup notification
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification(`⏰ Rappel : ${event.title}`, {
+                body: `Planifié aujourd'hui à ${timeStr} (${offsetLabel})\n${event.description || ''}`,
+                tag: event.id
+              });
+            } catch (e) {
+              console.error("Native notification creation crash ignored: ", e);
+            }
+          }
+        }
+      });
+
+      if (triggeredAny) {
+        setTriggeredReminders(updatedTriggered);
+        try {
+          localStorage.setItem('lambert_triggered_reminders', JSON.stringify(updatedTriggered));
+        } catch (e) {
+          console.error(e);
+        }
+
+        if (newNotifications.length > 0) {
+          setReminderNotifications(prev => [...prev, ...newNotifications]);
+          playNotificationSound();
+        }
+      }
+    };
+
+    // Run first immediate check, then schedule subsequent runs
+    checkReminders();
+    const intervalId = setInterval(checkReminders, 15000);
+    return () => clearInterval(intervalId);
+  }, [events, triggeredReminders]);
 
   const handleCustomUserLoggedIn = async (customUser: CustomUser) => {
     const wrappedUser = {
@@ -862,6 +1032,42 @@ export default function App() {
             &copy; {new Date().getFullYear()} Production Glace – Lambert enr. Tous droits réservés. Outil de gestion privée pour Zachary Martel.
           </div>
         </footer>
+
+        {/* Dynamic Notifications Alerts UI Overlay */}
+        <div className="fixed top-4 right-4 z-[9999] space-y-3 max-w-xs sm:max-w-sm w-full pointer-events-none pr-2">
+          <AnimatePresence>
+            {reminderNotifications.map(notif => (
+              <motion.div
+                key={notif.id}
+                initial={{ opacity: 0, x: 50, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 20, scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                className="pointer-events-auto bg-slate-900 border-l-4 border-amber-500 rounded-xl p-4 shadow-2xl flex items-start gap-3 transition-shadow"
+              >
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 text-amber-500">
+                  <Bell className="animate-swing" size={15} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start gap-2">
+                    <p className="text-xs font-black tracking-tight text-white uppercase">{notif.eventTitle}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReminderNotifications(prev => prev.filter(n => n.id !== notif.id));
+                      }}
+                      className="text-slate-400 hover:text-white transition p-0.5"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <p className="text-[10px] font-bold text-amber-400 mt-0.5 uppercase tracking-wide">💡 Rappel : {notif.timeLabel}</p>
+                  <p className="text-[11.5px] text-slate-300 leading-relaxed font-sans mt-2">{notif.message}</p>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
 
       </div>
     </div>

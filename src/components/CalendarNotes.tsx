@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -24,9 +24,16 @@ import {
   Truck,
   IceCream,
   CalendarDays,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { CalendarEvent, EventCategory, QuickNote } from '../types';
+import { 
+  connectGoogleServices, 
+  getCachedToken, 
+  createGoogleCalendarEvent, 
+  listGoogleCalendarEvents 
+} from '../googleWorkspace';
 
 interface CalendarNotesProps {
   categories: EventCategory[];
@@ -63,6 +70,89 @@ export default function CalendarNotes({
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date(2026, 5, 1)); // Default June 2026 for initial view
   const [selectedDayStr, setSelectedDayStr] = useState<string>('2026-06-14');
 
+  // Google Calendar Integration states
+  const [googleEvents, setGoogleEvents] = useState<any[]>([]);
+  const [googleCalendarLoading, setGoogleCalendarLoading] = useState<boolean>(false);
+  const [googleConnected, setGoogleConnected] = useState<boolean>(!!getCachedToken());
+  const [gcalSyncEnabled, setGcalSyncEnabled] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  const handleFetchGoogleCalendar = async () => {
+    if (!getCachedToken()) {
+      setGoogleConnected(false);
+      return;
+    }
+    setGoogleCalendarLoading(true);
+    try {
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
+      const firstDay = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString();
+      const lastDay = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59)).toISOString();
+      const items = await listGoogleCalendarEvents(firstDay, lastDay);
+      setGoogleEvents(items);
+      setGoogleConnected(true);
+    } catch (err: any) {
+      console.error('Google Calendar Sync Error:', err);
+      if (err.message?.includes('401') || err.message?.toLowerCase().includes('authorized')) {
+        setGoogleConnected(false);
+      }
+    } finally {
+      setGoogleCalendarLoading(false);
+    }
+  };
+
+  const handleGoogleConnectLocal = async () => {
+    try {
+      setGoogleCalendarLoading(true);
+      await connectGoogleServices();
+      setGoogleConnected(true);
+      setGcalSyncEnabled(true);
+      // Wait for cache token to be set
+      setTimeout(() => {
+        handleFetchGoogleCalendar();
+      }, 300);
+    } catch (err: any) {
+      alert(`Erreur de connexion Google Services : ${err.message || err}`);
+    } finally {
+      setGoogleCalendarLoading(false);
+    }
+  };
+
+  const handleExportToGoogleCalendar = async (evt: CalendarEvent) => {
+    const confirmExport = window.confirm(`Exporter l'événement "${evt.title}" vers ton Google Calendar principal ?`);
+    if (!confirmExport) return;
+
+    try {
+      setSyncStatus(`Exportation de "${evt.title}"...`);
+      const eventCat = categories.find(c => c.id === evt.category);
+      const categoryName = eventCat ? `[${eventCat.name}] ` : '';
+      const finalTitle = `${categoryName}${evt.title}`;
+      const finalDesc = evt.description || 'Créé via Frigo-Glace Pay';
+      
+      await createGoogleCalendarEvent(finalTitle, finalDesc, evt.date, evt.time, evt.duration);
+      setSyncStatus(`✓ Événement "${evt.title}" exporté avec succès !`);
+      setTimeout(() => setSyncStatus(null), 4000);
+      
+      if (gcalSyncEnabled) {
+        handleFetchGoogleCalendar();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erreur d'exportation Google Calendar : ${err.message || err}`);
+      setSyncStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    if (gcalSyncEnabled && getCachedToken()) {
+      handleFetchGoogleCalendar();
+    }
+  }, [currentMonth, gcalSyncEnabled]);
+
+  useEffect(() => {
+    setGoogleConnected(!!getCachedToken());
+  }, []);
+
   // Sub-states: Event Form
   const [eventTitle, setEventTitle] = useState('');
   const [eventDesc, setEventDesc] = useState('');
@@ -70,6 +160,7 @@ export default function CalendarNotes({
   const [eventDuration, setEventDuration] = useState('8h');
   const [eventCatId, setEventCatId] = useState(categories[0]?.id || 'cat-1');
   const [eventReminder, setEventReminder] = useState(false);
+  const [eventReminderTime, setEventReminderTime] = useState('15m');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   // Sub-states: Category Form
@@ -178,6 +269,10 @@ export default function CalendarNotes({
 
   const calendarDays = getDaysInMonth();
   const selectedDayEvents = events.filter(e => e.date === selectedDayStr);
+  const selectedDayGCalEvents = googleEvents.filter(ge => {
+    const geDateStr = ge.start?.dateTime?.split('T')[0] || ge.start?.date;
+    return geDateStr === selectedDayStr;
+  });
 
   // CATEGORY HANDLING
   const handleAddCatSubmit = (e: React.FormEvent) => {
@@ -204,6 +299,7 @@ export default function CalendarNotes({
         duration: eventDuration,
         category: eventCatId,
         reminder: eventReminder,
+        reminderTime: eventReminder ? eventReminderTime : 'none',
         date: selectedDayStr
       });
       setEditingEventId(null);
@@ -215,7 +311,8 @@ export default function CalendarNotes({
         time: eventTime,
         duration: eventDuration,
         category: eventCatId,
-        reminder: eventReminder
+        reminder: eventReminder,
+        reminderTime: eventReminder ? eventReminderTime : 'none'
       });
     }
 
@@ -225,6 +322,7 @@ export default function CalendarNotes({
     setEventTime('08:00');
     setEventDuration('8h');
     setEventReminder(false);
+    setEventReminderTime('15m');
   };
 
   const startEditEvent = (evt: CalendarEvent) => {
@@ -235,6 +333,7 @@ export default function CalendarNotes({
     setEventDuration(evt.duration);
     setEventCatId(evt.category);
     setEventReminder(evt.reminder);
+    setEventReminderTime(evt.reminderTime || '15m');
   };
 
   // NOTES HANDLING
@@ -358,6 +457,67 @@ export default function CalendarNotes({
               </div>
             </div>
 
+            {/* Google Calendar sync bar */}
+            <div className="bg-slate-50 border border-slate-205 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm-5-3h5v-5h-5v5z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
+                    Google Calendar
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${googleConnected ? 'bg-emerald-500' : 'bg-slate-350'}`} />
+                  </h4>
+                  <p className="text-[10px] text-slate-400">Affiche et exporte tes shifts chez Google Calendar</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {googleConnected ? (
+                  <>
+                    <div className="flex items-center gap-2 border-r border-slate-200 pr-2 MR-1">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={gcalSyncEnabled}
+                          onChange={(e) => setGcalSyncEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                        <span className="ml-1.5 text-[9.5px] font-bold text-slate-600">Afficher</span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={googleCalendarLoading}
+                      onClick={handleFetchGoogleCalendar}
+                      className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg font-bold text-[9px] transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw size={8} className={googleCalendarLoading ? 'animate-spin' : ''} />
+                      <span>Rafraîchir</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleGoogleConnectLocal}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[9.5px] font-sans transition flex items-center gap-1 hover:shadow-3xs cursor-pointer"
+                  >
+                    Activer la synchronisation
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {syncStatus && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-[10.5px] font-bold flex items-center gap-1 animate-pulse">
+                <span>{syncStatus}</span>
+              </div>
+            )}
+
             {/* Grid Days headings */}
             <div className="grid grid-cols-7 text-center text-xs font-black text-slate-400 uppercase tracking-wider mb-2">
               <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
@@ -371,15 +531,21 @@ export default function CalendarNotes({
                 const isSelected = day.dateStr === selectedDayStr;
                 const matchesEvents = events.filter(e => e.date === day.dateStr);
                 
+                // Match Google Calendar events for this day
+                const matchesGCalEvents = googleEvents.filter(ge => {
+                  const geDateStr = ge.start?.dateTime?.split('T')[0] || ge.start?.date;
+                  return geDateStr === day.dateStr;
+                });
+                
                 return (
                   <div
                     key={day.dateStr}
                     onClick={() => setSelectedDayStr(day.dateStr)}
                     className={`h-11 sm:h-14 p-1 rounded-lg border transition flex flex-col justify-between cursor-pointer select-none ${
-                      isSelected 
-                        ? 'border-blue-600 bg-blue-50/10' 
-                        : 'border-slate-100 hover:bg-slate-50'
-                    }`}
+                        isSelected 
+                          ? 'border-blue-600 bg-blue-50/10' 
+                          : 'border-slate-100 hover:bg-slate-50'
+                      }`}
                   >
                     <span className={`text-xs font-black font-mono w-5 h-5 flex items-center justify-center rounded-full ${
                       isSelected ? 'bg-blue-600 text-white' : 'text-slate-700'
@@ -400,7 +566,14 @@ export default function CalendarNotes({
                           />
                         );
                       })}
-                      {matchesEvents.length > 3 && (
+                      {gcalSyncEnabled && matchesGCalEvents.slice(0, 2).map((ge, gIdx) => (
+                        <span 
+                          key={`gcal-dot-${gIdx}`}
+                          className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse border border-white"
+                          title={`GCal: ${ge.summary || '(Sans titre)'}`}
+                        />
+                      ))}
+                      {(matchesEvents.length + (gcalSyncEnabled ? matchesGCalEvents.length : 0)) > 3 && (
                         <span className="text-[7px] text-slate-400 font-bold shrink-0 font-mono">+</span>
                       )}
                     </div>
@@ -428,56 +601,113 @@ export default function CalendarNotes({
               </h4>
               
               <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                {selectedDayEvents.length === 0 ? (
+                {selectedDayEvents.length === 0 && (!gcalSyncEnabled || selectedDayGCalEvents.length === 0) ? (
                   <div className="text-center py-6 text-slate-400 text-xs italic">
                     Aucun événement ou shift enregistré pour ce jour.
                   </div>
                 ) : (
-                  selectedDayEvents.map(evt => {
-                    const eventCat = categories.find(c => c.id === evt.category);
-                    const colorClasses = eventCat ? getTailwindBgColor(eventCat.color) : 'bg-slate-100 text-slate-700';
-                    const borderStyles = eventCat ? getTailwindBorderColor(eventCat.color) : 'border-slate-300';
-                    
-                    return (
-                      <div key={evt.id} className={`p-3 border-l-4 ${borderStyles} bg-slate-50 rounded-r-lg space-y-1 relative`}>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-xs font-bold text-slate-800">{evt.title}</span>
-                            {eventCat && (
-                              <span className={`ml-2 text-[8px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded border ${colorClasses}`}>
-                                {eventCat.name}
+                  <>
+                    {selectedDayEvents.map(evt => {
+                      const eventCat = categories.find(c => c.id === evt.category);
+                      const colorClasses = eventCat ? getTailwindBgColor(eventCat.color) : 'bg-slate-100 text-slate-700';
+                      const borderStyles = eventCat ? getTailwindBorderColor(eventCat.color) : 'border-slate-300';
+                      
+                      return (
+                        <div key={evt.id} className={`p-3 border-l-4 ${borderStyles} bg-slate-50 rounded-r-lg space-y-1 relative`}>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-xs font-bold text-slate-800">{evt.title}</span>
+                              {eventCat && (
+                                <span className={`ml-2 text-[8px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded border ${colorClasses}`}>
+                                  {eventCat.name}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Actions (Export to Google Calendar, Edit, Delete) */}
+                            <div className="flex items-center space-x-1 shrink-0">
+                              {googleConnected && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleExportToGoogleCalendar(evt)}
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition"
+                                  title="Exporter vers Google Calendar"
+                                >
+                                  <CalendarIcon size={12} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => startEditEvent(evt)}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeleteEvent(evt.id)}
+                                className="p-1 text-rose-600 hover:bg-rose-50 rounded animate-duration-150"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {evt.description && (
+                            <p className="text-[11px] text-slate-500 italic">"{evt.description}"</p>
+                          )}
+
+                          <div className="flex items-center space-x-3 text-[10px] text-slate-400 font-mono">
+                            <span className="flex items-center"><Clock size={11} className="mr-0.5" /> {evt.time} ({evt.duration})</span>
+                            {evt.reminder && (
+                              <span className="flex items-center text-amber-500">
+                                <Bell size={11} className="mr-0.5 animate-bounce-subtle" /> 
+                                Rappel : {
+                                  evt.reminderTime === '00m' || evt.reminderTime === '0m' ? "à l'heure" :
+                                  evt.reminderTime === '15m' ? '15 min avant' :
+                                  evt.reminderTime === '1h' ? '1 hr avant' :
+                                  evt.reminderTime === '1d' ? '1 jour avant' : 'Activé'
+                                }
                               </span>
                             )}
                           </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Google Calendar Integrated Events list */}
+                    {gcalSyncEnabled && selectedDayGCalEvents.length > 0 && (
+                      <div className="pt-2.5 border-t border-slate-100 mt-2.5 space-y-2">
+                        <div className="text-[9px] font-black text-blue-500 uppercase tracking-widest px-1">
+                          Événements Google Calendar
+                        </div>
+                        {selectedDayGCalEvents.map((ge, gIdx) => {
+                          const timeString = ge.start?.dateTime 
+                            ? new Date(ge.start.dateTime).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }) 
+                            : 'Toute la journée';
                           
-                          {/* Mod/Del action elements */}
-                          <div className="flex items-center space-x-1 shrink-0">
-                            <button
-                              onClick={() => startEditEvent(evt)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              onClick={() => onDeleteEvent(evt.id)}
-                              className="p-1 text-rose-600 hover:bg-rose-50 rounded"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {evt.description && (
-                          <p className="text-[11px] text-slate-500 italic">"{evt.description}"</p>
-                        )}
-
-                        <div className="flex items-center space-x-3 text-[10px] text-slate-400 font-mono">
-                          <span className="flex items-center"><Clock size={11} className="mr-0.5" /> {evt.time} ({evt.duration})</span>
-                          {evt.reminder && <span className="flex items-center text-amber-500"><Bell size={11} className="mr-0.5 animate-bounce-subtle" /> Rappel activé</span>}
-                        </div>
+                          return (
+                            <div key={`gcal-item-${gIdx}`} className="p-2.5 border-l-4 border-blue-500 bg-blue-50/20 rounded-r-lg space-y-1 relative">
+                              <div className="flex justify-between items-start">
+                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                                  {ge.summary || '(Sans titre)'}
+                                </span>
+                                <span className="text-[7px] uppercase font-black bg-blue-100 text-blue-600 px-1.5 py-0.2 rounded border border-blue-200">
+                                  GCal
+                                </span>
+                              </div>
+                              {ge.description && (
+                                <p className="text-[10px] text-slate-500 italic">"{ge.description}"</p>
+                              )}
+                              <div className="text-[9.5px] text-slate-400 font-mono flex items-center">
+                                <Clock size={10} className="mr-0.5 text-blue-400" /> {timeString}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -554,13 +784,29 @@ export default function CalendarNotes({
                       id="eventReminder"
                       checked={eventReminder}
                       onChange={(e) => setEventReminder(e.target.checked)}
-                      className="mr-1.5 focus:outline-hidden"
+                      className="mr-1.5 focus:outline-hidden cursor-pointer"
                     />
-                    <label htmlFor="eventReminder" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer flex items-center">
-                      <Bell size={11} className="mr-0.5 text-amber-500" /> notification
+                    <label htmlFor="eventReminder" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer flex items-center select-none">
+                      <Bell size={11} className="mr-0.5 text-amber-500 shrink-0" /> Activer Rappel
                     </label>
                   </div>
                 </div>
+
+                {eventReminder && (
+                  <div className="p-3 bg-amber-50/40 border border-amber-100 rounded-lg text-xs space-y-1 mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Temps de Rappel</label>
+                    <select
+                      value={eventReminderTime}
+                      onChange={(e) => setEventReminderTime(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-md py-1 px-2 text-xs"
+                    >
+                      <option value="0m">Au moment de l'événement</option>
+                      <option value="15m">15 minutes avant</option>
+                      <option value="1h">1 heure avant</option>
+                      <option value="1d">1 jour avant</option>
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex gap-2.5 pt-1.5">
                   <button

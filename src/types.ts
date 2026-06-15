@@ -38,6 +38,7 @@ export interface CalendarEvent {
   duration: string; // e.g. "2h", "30m"
   category: string; // Category name or ID
   reminder: boolean;
+  reminderTime?: string; // e.g. "0m", "15m", "1h", "1d"
   createdAt: string;
 }
 
