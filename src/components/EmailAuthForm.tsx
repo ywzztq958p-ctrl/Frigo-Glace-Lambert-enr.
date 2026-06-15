@@ -105,6 +105,8 @@ export default function EmailAuthForm({ onSuccess, onUserLoggedIn, isDarkBg = fa
             </span>
             <input
               type="text"
+              name="username"
+              autoComplete="username"
               placeholder="Ex: zachary"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -124,6 +126,8 @@ export default function EmailAuthForm({ onSuccess, onUserLoggedIn, isDarkBg = fa
               <div className="relative">
                 <input
                   type="text"
+                  name="fullname"
+                  autoComplete="name"
                   placeholder="Ex: Zachary Martel"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -140,6 +144,8 @@ export default function EmailAuthForm({ onSuccess, onUserLoggedIn, isDarkBg = fa
               <div className="relative">
                 <input
                   type="email"
+                  name="email"
+                  autoComplete="email"
                   placeholder="Ex: info@exemple.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -161,6 +167,8 @@ export default function EmailAuthForm({ onSuccess, onUserLoggedIn, isDarkBg = fa
             </span>
             <input
               type="password"
+              name="password"
+              autoComplete={isRegister ? "new-password" : "current-password"}
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

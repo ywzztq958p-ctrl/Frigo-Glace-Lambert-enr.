@@ -23,9 +23,6 @@ import {
   Settings
 } from 'lucide-react';
 
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, logOut } from './firebase';
-import { FirebaseSync } from './firebaseSync';
 import { CustomServerSync, CustomUser } from './customServerSync';
 import { StorageAPI } from './utils';
 import { ProductionEntry, PayPayment, EventCategory, CalendarEvent, QuickNote, AppSettings } from './types';
@@ -72,7 +69,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
-  // Load from Storage API or Custom Server or Firestore depending on auth
+  // Load from Storage API or Custom Server depending on auth (Completely without Firebase)
   useEffect(() => {
     // 1. Check custom server authentication state first
     const storedCustom = localStorage.getItem('lambert_custom_user');
@@ -118,85 +115,21 @@ export default function App() {
           setSyncStatus('error');
           setAuthLoading(false);
         });
-
-        // Bypassing Firebase if logged in with Custom Data Center
         return;
       } catch (err) {
         console.error("Erreur de décodage de l'utilisateur personnalisé:", err);
       }
     }
 
-    // 2. Fallback / Mainstream Firebase
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // Prevents overwriting custom user if exists
-      if (localStorage.getItem('lambert_custom_user')) return;
-
-      setUser(currentUser);
-      setAuthLoading(false);
-
-      if (currentUser) {
-        setSyncStatus('syncing');
-        try {
-          // Sync any existing local storage state to cloud on first login
-          const localProd = StorageAPI.getProduction();
-          const localPay = StorageAPI.getPayments();
-          const localCat = StorageAPI.getCategories();
-          const localEvt = StorageAPI.getEvents();
-          const localNote = StorageAPI.getNotes();
-
-          await FirebaseSync.syncLocalStorageToCloud(currentUser.uid, {
-            production: localProd,
-            payments: localPay,
-            categories: localCat,
-            events: localEvt,
-            notes: localNote
-          });
-          setSyncStatus('synced');
-        } catch (syncErr) {
-          console.error("Erreur de synchronisation initiale:", syncErr);
-          setSyncStatus('error');
-        }
-
-        // Setup live subscriptions
-        const unsubProd = FirebaseSync.subscribeProduction(currentUser.uid, setProduction);
-        const unsubPay = FirebaseSync.subscribePayments(currentUser.uid, setPayments);
-        const unsubCat = FirebaseSync.subscribeCategories(currentUser.uid, setCategories);
-        const unsubEvt = FirebaseSync.subscribeEvents(currentUser.uid, setEvents);
-        const unsubNote = FirebaseSync.subscribeNotes(currentUser.uid, setNotes);
-        const unsubSettings = FirebaseSync.subscribeSettings(currentUser.uid, async (remoteSettings) => {
-          if (remoteSettings) {
-            setSettings(remoteSettings);
-          } else {
-            const localSettings = StorageAPI.getSettings();
-            await FirebaseSync.saveSettings(currentUser.uid, {
-              darkMode: localSettings.darkMode,
-              pocketPrice: localSettings.pocketPrice,
-              bagPrice: localSettings.bagPrice
-            });
-          }
-        });
-
-        return () => {
-          unsubProd();
-          unsubPay();
-          unsubCat();
-          unsubEvt();
-          unsubNote();
-          unsubSettings();
-        };
-      } else {
-        // Guest mode fallback
-        setProduction(StorageAPI.getProduction());
-        setPayments(StorageAPI.getPayments());
-        setCategories(StorageAPI.getCategories());
-        setEvents(StorageAPI.getEvents());
-        setNotes(StorageAPI.getNotes());
-        setSettings(StorageAPI.getSettings());
-        setSyncStatus('idle');
-      }
-    });
-
-    return () => unsubscribe();
+    // Guest mode fallback (completely local)
+    setProduction(StorageAPI.getProduction());
+    setPayments(StorageAPI.getPayments());
+    setCategories(StorageAPI.getCategories());
+    setEvents(StorageAPI.getEvents());
+    setNotes(StorageAPI.getNotes());
+    setSettings(StorageAPI.getSettings());
+    setSyncStatus('idle');
+    setAuthLoading(false);
   }, []);
 
   // background autosave for Custom Server "Data Center" profile
@@ -274,33 +207,21 @@ export default function App() {
   };
 
   const handleLogOut = async () => {
-    if (user && user.isCustom) {
-      localStorage.removeItem('lambert_custom_user');
-      setUser(null);
-      setProduction(StorageAPI.getProduction());
-      setPayments(StorageAPI.getPayments());
-      setCategories(StorageAPI.getCategories());
-      setEvents(StorageAPI.getEvents());
-      setNotes(StorageAPI.getNotes());
-      setSettings(StorageAPI.getSettings());
-      setSyncStatus('idle');
-    } else {
-      await logOut();
-    }
+    localStorage.removeItem('lambert_custom_user');
+    setUser(null);
+    setProduction(StorageAPI.getProduction());
+    setPayments(StorageAPI.getPayments());
+    setCategories(StorageAPI.getCategories());
+    setEvents(StorageAPI.getEvents());
+    setNotes(StorageAPI.getNotes());
+    setSettings(StorageAPI.getSettings());
+    setSyncStatus('idle');
   };
 
   const handleUpdateSettings = async (updatedFields: Partial<AppSettings>) => {
     const newSettings = { ...settings, ...updatedFields };
     setSettings(newSettings);
     StorageAPI.saveSettings(newSettings);
-
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveSettings(user.uid, {
-        darkMode: newSettings.darkMode,
-        pocketPrice: newSettings.pocketPrice,
-        bagPrice: newSettings.bagPrice
-      });
-    }
   };
 
   const getGreetingName = () => {
@@ -318,84 +239,50 @@ export default function App() {
       id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       createdAt: new Date().toISOString()
     };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveProductionEntry(user.uid, freshEntry);
-    } else {
-      const updated = [freshEntry, ...production];
-      setProduction(updated);
-      StorageAPI.saveProduction(updated);
-    }
+    const updated = [freshEntry, ...production];
+    setProduction(updated);
+    StorageAPI.saveProduction(updated);
   };
 
   const handleUpdateEntry = async (id: string, updatedFields: Partial<ProductionEntry>) => {
     const target = production.find(item => item.id === id);
     if (!target) return;
     const updatedUserEntry = { ...target, ...updatedFields };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveProductionEntry(user.uid, updatedUserEntry);
-    } else {
-      const updated = production.map(item => {
-        if (item.id === id) {
-          return updatedUserEntry;
-        }
-        return item;
-      });
-      setProduction(updated);
-      StorageAPI.saveProduction(updated);
-    }
+    const updated = production.map(item => {
+      if (item.id === id) {
+        return updatedUserEntry;
+      }
+      return item;
+    });
+    setProduction(updated);
+    StorageAPI.saveProduction(updated);
   };
 
   const handleDeleteEntry = async (id: string) => {
-    if (user && !user.isCustom) {
-      // Revert states in DB
-      await FirebaseSync.deleteProductionEntry(id);
+    const updated = production.filter(item => item.id !== id);
+    setProduction(updated);
+    StorageAPI.saveProduction(updated);
 
-      // If deleted entry was associated with a payment, remove it or adjust payment sum
-      const matchingPayment = payments.find(p => p.includedEntries.includes(id));
-      if (matchingPayment) {
-        const entryToSubtractBeforeRemoval = production.find(e => e.id === id);
-        if (entryToSubtractBeforeRemoval) {
-          const valueToSubtract = (entryToSubtractBeforeRemoval.pockets12kg * settings.pocketPrice) + (entryToSubtractBeforeRemoval.bags27kg * settings.bagPrice);
-          const updatedEntries = matchingPayment.includedEntries.filter(itemId => itemId !== id);
-          if (updatedEntries.length > 0) {
-            const updatedPayment: PayPayment = {
-              ...matchingPayment,
-              amountTotal: Math.max(0, matchingPayment.amountTotal - valueToSubtract),
-              includedEntries: updatedEntries
+    // If deleted entry was associated with a payment, remove it or adjust payment sum
+    const matchingPayment = payments.find(p => p.includedEntries.includes(id));
+    if (matchingPayment) {
+      const entryToSubtractBeforeRemoval = production.find(e => e.id === id);
+      if (entryToSubtractBeforeRemoval) {
+        const valueToSubtract = (entryToSubtractBeforeRemoval.pockets12kg * settings.pocketPrice) + (entryToSubtractBeforeRemoval.bags27kg * settings.bagPrice);
+        
+        const adjustedPayments = payments.map(pay => {
+          if (pay.id === matchingPayment.id) {
+            return {
+              ...pay,
+              amountTotal: Math.max(0, pay.amountTotal - valueToSubtract),
+              includedEntries: pay.includedEntries.filter(itemId => itemId !== id)
             };
-            await FirebaseSync.savePayment(user.uid, updatedPayment);
-          } else {
-            await FirebaseSync.deletePayment(matchingPayment.id);
           }
-        }
-      }
-    } else {
-      // Local state fallback
-      const updated = production.filter(item => item.id !== id);
-      setProduction(updated);
-      StorageAPI.saveProduction(updated);
+          return pay;
+        }).filter(p => p.includedEntries.length > 0); // Delete payment if it gets empty
 
-      // If deleted entry was associated with a payment, remove it or adjust payment sum
-      const matchingPayment = payments.find(p => p.includedEntries.includes(id));
-      if (matchingPayment) {
-        const entryToSubtractBeforeRemoval = production.find(e => e.id === id);
-        if (entryToSubtractBeforeRemoval) {
-          const valueToSubtract = (entryToSubtractBeforeRemoval.pockets12kg * settings.pocketPrice) + (entryToSubtractBeforeRemoval.bags27kg * settings.bagPrice);
-          
-          const adjustedPayments = payments.map(pay => {
-            if (pay.id === matchingPayment.id) {
-              return {
-                ...pay,
-                amountTotal: Math.max(0, pay.amountTotal - valueToSubtract),
-                includedEntries: pay.includedEntries.filter(itemId => itemId !== id)
-              };
-            }
-            return pay;
-          }).filter(p => p.includedEntries.length > 0); // Delete payment if it gets empty
-
-          setPayments(adjustedPayments);
-          StorageAPI.savePayments(adjustedPayments);
-        }
+        setPayments(adjustedPayments);
+        StorageAPI.savePayments(adjustedPayments);
       }
     }
   };
@@ -429,22 +316,12 @@ export default function App() {
       return item;
     });
 
-    if (user && !user.isCustom) {
-      // In cloud mode, write modifications to database
-      for (const entry of mappedWithPayId) {
-        if (entryIds.includes(entry.id)) {
-          await FirebaseSync.saveProductionEntry(user.uid, entry);
-        }
-      }
-      await FirebaseSync.savePayment(user.uid, newPayment);
-    } else {
-      setProduction(mappedWithPayId);
-      StorageAPI.saveProduction(mappedWithPayId);
+    setProduction(mappedWithPayId);
+    StorageAPI.saveProduction(mappedWithPayId);
 
-      const updatedPayments = [newPayment, ...payments];
-      setPayments(updatedPayments);
-      StorageAPI.savePayments(updatedPayments);
-    }
+    const updatedPayments = [newPayment, ...payments];
+    setPayments(updatedPayments);
+    StorageAPI.savePayments(updatedPayments);
   };
 
   const handleDeletePayment = async (paymentId: string) => {
@@ -460,21 +337,12 @@ export default function App() {
       return item;
     });
 
-    if (user && !user.isCustom) {
-      for (const entryRef of restoredProduction) {
-        if (entryRef.payId === paymentId || payment.includedEntries.includes(entryRef.id)) {
-          await FirebaseSync.saveProductionEntry(user.uid, entryRef);
-        }
-      }
-      await FirebaseSync.deletePayment(paymentId);
-    } else {
-      setProduction(restoredProduction);
-      StorageAPI.saveProduction(restoredProduction);
+    setProduction(restoredProduction);
+    StorageAPI.saveProduction(restoredProduction);
 
-      const refreshedPayments = payments.filter(p => p.id !== paymentId);
-      setPayments(refreshedPayments);
-      StorageAPI.savePayments(refreshedPayments);
-    }
+    const refreshedPayments = payments.filter(p => p.id !== paymentId);
+    setPayments(refreshedPayments);
+    StorageAPI.savePayments(refreshedPayments);
   };
 
   // CATEGORIES CALLBACKS
@@ -483,23 +351,15 @@ export default function App() {
       ...newCat,
       id: `cat-${Date.now()}`
     };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveCategory(user.uid, freshCat);
-    } else {
-      const updated = [...categories, freshCat];
-      setCategories(updated);
-      StorageAPI.saveCategories(updated);
-    }
+    const updated = [...categories, freshCat];
+    setCategories(updated);
+    StorageAPI.saveCategories(updated);
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (user && !user.isCustom) {
-      await FirebaseSync.deleteCategory(id);
-    } else {
-      const updated = categories.filter(c => c.id !== id);
-      setCategories(updated);
-      StorageAPI.saveCategories(updated);
-    }
+    const updated = categories.filter(c => c.id !== id);
+    setCategories(updated);
+    StorageAPI.saveCategories(updated);
   };
 
   // CALENDAR EVENTS CALLBACKS
@@ -509,41 +369,29 @@ export default function App() {
       id: `evt-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveEvent(user.uid, freshEvent);
-    } else {
-      const updated = [freshEvent, ...events];
-      setEvents(updated);
-      StorageAPI.saveEvents(updated);
-    }
+    const updated = [freshEvent, ...events];
+    setEvents(updated);
+    StorageAPI.saveEvents(updated);
   };
 
   const handleUpdateEvent = async (id: string, updatedFields: Partial<CalendarEvent>) => {
     const target = events.find(item => item.id === id);
     if (!target) return;
     const updatedUserEvent = { ...target, ...updatedFields };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveEvent(user.uid, updatedUserEvent);
-    } else {
-      const updated = events.map(item => {
-        if (item.id === id) {
-          return updatedUserEvent;
-        }
-        return item;
-      });
-      setEvents(updated);
-      StorageAPI.saveEvents(updated);
-    }
+    const updated = events.map(item => {
+      if (item.id === id) {
+        return updatedUserEvent;
+      }
+      return item;
+    });
+    setEvents(updated);
+    StorageAPI.saveEvents(updated);
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (user && !user.isCustom) {
-      await FirebaseSync.deleteEvent(id);
-    } else {
-      const updated = events.filter(item => item.id !== id);
-      setEvents(updated);
-      StorageAPI.saveEvents(updated);
-    }
+    const updated = events.filter(item => item.id !== id);
+    setEvents(updated);
+    StorageAPI.saveEvents(updated);
   };
 
   // NOTES CALLBACKS
@@ -552,41 +400,29 @@ export default function App() {
       ...newNote,
       id: `note-${Date.now()}`
     };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveNote(user.uid, freshNote);
-    } else {
-      const updated = [freshNote, ...notes];
-      setNotes(updated);
-      StorageAPI.saveNotes(updated);
-    }
+    const updated = [freshNote, ...notes];
+    setNotes(updated);
+    StorageAPI.saveNotes(updated);
   };
 
   const handleUpdateNote = async (id: string, updatedFields: Partial<QuickNote>) => {
     const target = notes.find(item => item.id === id);
     if (!target) return;
     const updatedUserNote = { ...target, ...updatedFields };
-    if (user && !user.isCustom) {
-      await FirebaseSync.saveNote(user.uid, updatedUserNote);
-    } else {
-      const updated = notes.map(item => {
-        if (item.id === id) {
-          return updatedUserNote;
-        }
-        return item;
-      });
-      setNotes(updated);
-      StorageAPI.saveNotes(updated);
-    }
+    const updated = notes.map(item => {
+      if (item.id === id) {
+        return updatedUserNote;
+      }
+      return item;
+    });
+    setNotes(updated);
+    StorageAPI.saveNotes(updated);
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (user && !user.isCustom) {
-      await FirebaseSync.deleteNote(id);
-    } else {
-      const updated = notes.filter(item => item.id !== id);
-      setNotes(updated);
-      StorageAPI.saveNotes(updated);
-    }
+    const updated = notes.filter(item => item.id !== id);
+    setNotes(updated);
+    StorageAPI.saveNotes(updated);
   };
 
   return (

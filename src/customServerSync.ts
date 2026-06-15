@@ -19,12 +19,20 @@ export interface CustomDataSet {
   settings: any;
 }
 
+const getApiUrl = (path: string): string => {
+  const origin = (typeof window !== 'undefined' && window.location && window.location.origin)
+    ? window.location.origin
+    : '';
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${origin}${cleanPath}`;
+};
+
 export const CustomServerSync = {
   /**
    * Log in via custom server.
    */
   login: async (usernameOrEmail: string, pass: string): Promise<CustomUser> => {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(getApiUrl('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usernameOrEmail, password: pass })
@@ -40,7 +48,7 @@ export const CustomServerSync = {
    * Register a new user via custom server.
    */
   register: async (username: string, pass: string, email?: string, displayName?: string): Promise<CustomUser> => {
-    const res = await fetch('/api/auth/register', {
+    const res = await fetch(getApiUrl('/api/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password: pass, email, displayName })
@@ -56,7 +64,7 @@ export const CustomServerSync = {
    * Load data from custom server.
    */
   load: async (userId: string): Promise<CustomDataSet> => {
-    const res = await fetch(`/api/data/load/${userId}`);
+    const res = await fetch(getApiUrl(`/api/data/load/${userId}`));
     if (!res.ok) {
       throw new Error('Impossible de charger les données du serveur.');
     }
@@ -67,7 +75,7 @@ export const CustomServerSync = {
    * Save data to custom server.
    */
   save: async (userId: string, data: CustomDataSet): Promise<{ success: boolean; updated: string }> => {
-    const res = await fetch(`/api/data/save/${userId}`, {
+    const res = await fetch(getApiUrl(`/api/data/save/${userId}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -78,3 +86,4 @@ export const CustomServerSync = {
     return res.json();
   }
 };
+
