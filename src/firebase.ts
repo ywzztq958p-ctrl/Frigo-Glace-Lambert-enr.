@@ -4,7 +4,15 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -76,6 +84,29 @@ export async function logOut() {
     await signOut(auth);
   } catch (error) {
     console.error("Erreur lors de la déconnexion:", error);
+    throw error;
+  }
+}
+
+export async function signInWithEmail(email: string, pass: string) {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, pass);
+    return result.user;
+  } catch (error) {
+    console.error("Erreur lors de la connexion email:", error);
+    throw error;
+  }
+}
+
+export async function signUpWithEmail(email: string, pass: string, name?: string) {
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, pass);
+    if (name && result.user) {
+      await updateProfile(result.user, { displayName: name });
+    }
+    return result.user;
+  } catch (error) {
+    console.error("Erreur lors de l'inscription email:", error);
     throw error;
   }
 }

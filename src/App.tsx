@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, signInWithGoogle, logOut } from './firebase';
+import { auth, signInWithGoogle, logOut, signInWithEmail, signUpWithEmail } from './firebase';
 import { FirebaseSync } from './firebaseSync';
 import { StorageAPI } from './utils';
 import { ProductionEntry, PayPayment, EventCategory, CalendarEvent, QuickNote, AppSettings } from './types';
@@ -36,6 +36,7 @@ import Wallet from './components/Wallet';
 import Analytics from './components/Analytics';
 import CalendarNotes from './components/CalendarNotes';
 import SettingsView from './components/Settings';
+import EmailAuthForm from './components/EmailAuthForm';
 
 export default function App() {
   // Navigation Tabs state
@@ -587,8 +588,8 @@ export default function App() {
                     <Cloud size={10} className="text-amber-500" />
                     Sauvegarde Cloud
                   </p>
-                  <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
-                    Ayez accès à vos données sur d'autres appareils !
+                  <p className="text-[10.5px] text-slate-400 font-bold leading-relaxed">
+                    Accédez à vos données n'importe où ! Si la connexion Google ne fonctionne pas sur votre iPhone, utilisez l'option Email ci-dessous.
                   </p>
                 </div>
                 
@@ -605,6 +606,14 @@ export default function App() {
                   <LogIn size={11} />
                   <span>Connexion Google</span>
                 </button>
+
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-slate-800"></div>
+                  <span className="flex-shrink mx-2 text-[8px] text-slate-500 uppercase font-black">OU</span>
+                  <div className="flex-grow border-t border-slate-800"></div>
+                </div>
+
+                <EmailAuthForm isDarkBg={true} />
               </div>
             )}
           </div>
@@ -700,7 +709,7 @@ export default function App() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.15 }}
-              className="md:hidden border-b border-slate-200 bg-white px-3 py-4 space-y-1 block shadow-lg sticky top-16 z-30 print:hidden"
+              className="md:hidden border-b border-slate-200 bg-white px-3 py-4 space-y-1 block shadow-lg sticky top-16 z-30 print:hidden max-h-[85vh] overflow-y-auto"
             >
               <button
                 onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }}
@@ -793,7 +802,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-2 px-3">
+                  <div className="space-y-3 px-3">
                     <p className="text-[9px] text-slate-400 font-bold">Connectez-vous pour conserver vos données et y accéder sur d'autres appareils :</p>
                     <button
                       onClick={async () => {
@@ -808,6 +817,14 @@ export default function App() {
                     >
                       <LogIn size={11} /> Connexion Google
                     </button>
+
+                    <div className="relative flex py-0.5 items-center">
+                      <div className="flex-grow border-t border-slate-100"></div>
+                      <span className="flex-shrink mx-2 text-[8px] text-slate-450 uppercase font-bold">OU</span>
+                      <div className="flex-grow border-t border-slate-100"></div>
+                    </div>
+
+                    <EmailAuthForm onSuccess={() => setMobileMenuOpen(false)} isDarkBg={false} />
                   </div>
                 )}
               </div>
