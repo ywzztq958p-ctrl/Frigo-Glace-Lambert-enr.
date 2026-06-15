@@ -84,8 +84,8 @@ export default function SettingsView({ settings, onUpdateSettings, user }: Setti
           <div className="bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-3 shrink-0 self-start md:self-center">
             <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping shrink-0" />
             <div className="text-left">
-              <p className="text-[10px] font-black uppercase tracking-wider">Cloud Synchronisé</p>
-              <p className="text-[10px] font-medium text-emerald-600/90">Vos réglages sont sauvegardés sur votre compte Google.</p>
+              <p className="text-[10px] font-black uppercase tracking-wider">Data Center Activé</p>
+              <p className="text-[10px] font-medium text-emerald-600/90">Vos réglages sont enregistrés automatiquement sur le serveur local.</p>
             </div>
           </div>
         )}

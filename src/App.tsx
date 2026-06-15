@@ -65,71 +65,68 @@ export default function App() {
   }, [settings.darkMode]);
 
   // Auth & Sync State
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>({
+    uid: 'zachary_martel_datacenter',
+    displayName: 'Zachary Martel',
+    email: 'zacharymartel80@gmail.com',
+    username: 'zachary',
+    isCustom: true
+  });
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
-  // Load from Storage API or Custom Server depending on auth (Completely without Firebase)
+  // Load automatically from Custom Server "Data Center" account for Zachary Martel
   useEffect(() => {
-    // 1. Check custom server authentication state first
-    const storedCustom = localStorage.getItem('lambert_custom_user');
-    if (storedCustom) {
-      try {
-        const parsedUser = JSON.parse(storedCustom);
-        setUser({
-          uid: parsedUser.uid,
-          displayName: parsedUser.displayName,
-          email: parsedUser.email,
-          username: parsedUser.username,
-          isCustom: true
-        });
-        setSyncStatus('syncing');
+    setSyncStatus('syncing');
+    setAuthLoading(true);
 
-        CustomServerSync.load(parsedUser.uid).then((res) => {
-          if (res) {
-            if (res.production) setProduction(res.production);
-            if (res.payments) setPayments(res.payments);
-            if (res.categories && res.categories.length > 0) {
-              setCategories(res.categories);
-            } else {
-              setCategories(StorageAPI.getCategories());
-            }
-            if (res.events) setEvents(res.events);
-            if (res.notes) setNotes(res.notes);
-            if (res.settings) {
-              setSettings(res.settings);
-            } else {
-              setSettings(StorageAPI.getSettings());
-            }
-            setSyncStatus('synced');
-          }
-          setAuthLoading(false);
-        }).catch((err) => {
-          console.error("Erreur lors du chargement depuis le serveur personnalisé:", err);
-          setProduction(StorageAPI.getProduction());
-          setPayments(StorageAPI.getPayments());
+    CustomServerSync.load('zachary_martel_datacenter').then((res) => {
+      if (res && (res.production?.length > 0 || res.payments?.length > 0 || res.categories?.length > 0 || res.events?.length > 0 || res.notes?.length > 0)) {
+        if (res.production) setProduction(res.production);
+        if (res.payments) setPayments(res.payments);
+        if (res.categories && res.categories.length > 0) {
+          setCategories(res.categories);
+        } else {
           setCategories(StorageAPI.getCategories());
-          setEvents(StorageAPI.getEvents());
-          setNotes(StorageAPI.getNotes());
+        }
+        if (res.events) setEvents(res.events);
+        if (res.notes) setNotes(res.notes);
+        if (res.settings) {
+          setSettings(res.settings);
+        } else {
           setSettings(StorageAPI.getSettings());
-          setSyncStatus('error');
-          setAuthLoading(false);
-        });
-        return;
-      } catch (err) {
-        console.error("Erreur de décodage de l'utilisateur personnalisé:", err);
-      }
-    }
+        }
+        setSyncStatus('synced');
+      } else {
+        // Migration: If server block is fresh, load local storage and let the background saver back it up
+        const localProd = StorageAPI.getProduction();
+        const localPay = StorageAPI.getPayments();
+        const localCat = StorageAPI.getCategories();
+        const localEvt = StorageAPI.getEvents();
+        const localNote = StorageAPI.getNotes();
+        const localSettings = StorageAPI.getSettings();
 
-    // Guest mode fallback (completely local)
-    setProduction(StorageAPI.getProduction());
-    setPayments(StorageAPI.getPayments());
-    setCategories(StorageAPI.getCategories());
-    setEvents(StorageAPI.getEvents());
-    setNotes(StorageAPI.getNotes());
-    setSettings(StorageAPI.getSettings());
-    setSyncStatus('idle');
-    setAuthLoading(false);
+        setProduction(localProd);
+        setPayments(localPay);
+        setCategories(localCat);
+        setEvents(localEvt);
+        setNotes(localNote);
+        setSettings(localSettings);
+        setSyncStatus('synced');
+      }
+      setAuthLoading(false);
+    }).catch((err) => {
+      console.error("Erreur de synchronisation avec le serveur:", err);
+      // Fallback offline (local storage)
+      setProduction(StorageAPI.getProduction());
+      setPayments(StorageAPI.getPayments());
+      setCategories(StorageAPI.getCategories());
+      setEvents(StorageAPI.getEvents());
+      setNotes(StorageAPI.getNotes());
+      setSettings(StorageAPI.getSettings());
+      setSyncStatus('error');
+      setAuthLoading(false);
+    });
   }, []);
 
   // background autosave for Custom Server "Data Center" profile
@@ -523,60 +520,66 @@ export default function App() {
         {/* Auth Sync Sidebar Panel */}
         <div className="p-6 pt-0 mt-2 border-t border-slate-800">
           <div className="mt-6 bg-slate-800/60 rounded-2xl p-4 border border-slate-850">
-            {authLoading ? (
-              <div className="flex items-center justify-center py-2 text-slate-400 text-xs">
-                <RefreshCw size={14} className="animate-spin mr-2 text-blue-500" />
-                Chargement...
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-black uppercase shrink-0">
+                  {getGreetingName().substring(0, 1)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-white truncate leading-none">
+                    {user?.displayName || 'Zachary Martel'}
+                  </p>
+                  <p className="text-[9px] text-slate-400 font-bold mt-1">
+                    Compte connecté
+                  </p>
+                </div>
               </div>
-            ) : user ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2.5">
-                  {user.photoURL ? (
-                    <img 
-                      src={user.photoURL} 
-                      alt={user.displayName} 
-                      className="w-8 h-8 rounded-full border border-slate-700 object-cover" 
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase shrink-0">
-                      {getGreetingName().substring(0, 1)}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black text-white truncate leading-none">
-                      {user.displayName || 'Mon Compte'}
-                    </p>
-                    <span className="text-[9px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                      <Cloud size={10} className="stroke-[2.5]" />
-                      {user.isCustom ? 'Data Center Actif' : 'Cloud Sync Actif'}
-                    </span>
+
+              <div className="p-2.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+                {syncStatus === 'syncing' && (
+                  <div className="flex items-center gap-2 text-blue-400">
+                    <RefreshCw size={12} className="animate-spin text-blue-500 shrink-0" />
+                    <span className="text-[10px] font-bold tracking-tight">Synchronisation...</span>
                   </div>
-                </div>
-                
+                )}
+                {syncStatus === 'synced' && (
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <Cloud size={12} className="stroke-[2.5] text-emerald-500 shrink-0" />
+                    <span className="text-[10px] font-bold tracking-tight">Data Center connecté</span>
+                  </div>
+                )}
+                {syncStatus === 'error' && (
+                  <div className="flex items-center gap-2 text-rose-400">
+                    <Cloud size={12} className="stroke-[2.5] text-rose-500 shrink-0" />
+                    <span className="text-[10px] font-bold tracking-tight">Mode hors-ligne</span>
+                  </div>
+                )}
+                <p className="text-[9.5px] text-slate-400 leading-snug font-medium mt-1.5">
+                  {syncStatus === 'synced' && 'Toutes les entrées sont automatiquement enregistrées sur votre serveur privé.'}
+                  {syncStatus === 'syncing' && 'Sauvegarde des nouvelles modifications sur le serveur local...'}
+                  {syncStatus === 'error' && 'Une erreur s\'est produite. Vos données restent conservées dans ce navigateur.'}
+                </p>
+              </div>
+
+              {syncStatus === 'error' && (
                 <button
-                  onClick={handleLogOut}
-                  className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all select-none cursor-pointer"
+                  onClick={async () => {
+                    setSyncStatus('syncing');
+                    try {
+                      const dataToSave = { production, payments, categories, events, notes, settings };
+                      await CustomServerSync.save('zachary_martel_datacenter', dataToSave);
+                      setSyncStatus('synced');
+                    } catch (e) {
+                      setSyncStatus('error');
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-blue-950/40 hover:bg-blue-900/40 text-blue-400 border border-blue-900/30 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all select-none cursor-pointer"
                 >
-                  <LogOut size={11} />
-                  <span>Déconnexion</span>
+                  <RefreshCw size={10} />
+                  <span>Réessayer la connexion</span>
                 </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1">
-                    <Cloud size={10} className="text-amber-500" />
-                    Serveur Lambert
-                  </p>
-                  <p className="text-[10.5px] text-slate-400 font-bold leading-relaxed">
-                    S'inscrire sans Firebase ! Créez un compte rapide pour synchroniser et sécuriser vos données sur notre serveur local.
-                  </p>
-                </div>
-                
-                <EmailAuthForm onUserLoggedIn={handleCustomUserLoggedIn} isDarkBg={true} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
         
