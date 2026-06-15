@@ -81,6 +81,11 @@ export default function ProductionManager({
       return;
     }
 
+    if (pockets12kg === 0 && bags27kg === 0) {
+      showFeedback('error', 'Veuillez saisir au moins une quantité de poches ou de sacs.');
+      return;
+    }
+
     if (!date) {
       showFeedback('error', 'Veuillez sélectionner une date valide.');
       return;
@@ -291,7 +296,6 @@ export default function ProductionManager({
                   min="0"
                   placeholder="0"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-800 focus:outline-hidden focus:border-blue-400 focus:bg-white font-mono"
-                  required
                 />
               </div>
 
@@ -306,7 +310,6 @@ export default function ProductionManager({
                   min="0"
                   placeholder="0"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-800 focus:outline-hidden focus:border-blue-400 focus:bg-white font-mono"
-                  required
                 />
               </div>
             </div>
