@@ -1,0 +1,8 @@
+{
+  "name": "Production Glace - Lambert",
+  "description": "Gestion de la production de glace, calcul de paye en direct, graphiques de performance, suivi de portefeuille et export de rapports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
